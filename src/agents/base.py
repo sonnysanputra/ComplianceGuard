@@ -1,0 +1,100 @@
+import time
+import re
+from abc import ABC, abstractmethod
+
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from ..services import chat
+from ..state import stamp
+
+
+# Injected before an agent's own system prompt when it uses self.reason().
+_COT_PREFIX = """Reason step by step, then give a confidence score.
+
+Format your answer exactly like this:
+<reasoning>
+[your step-by-step reasoning]
+</reasoning>
+Confidence: [0-100]
+
+"""
+
+
+class BaseAgent(ABC):
+    name: str = "base_agent"     # machine id, used in traces/messages
+    label: str = "Base Agent"    # human-readable, used in the audit timeline
+
+    # ── Subclasses implement this ─────────────────────────────────────────
+    @abstractmethod
+    def run(self, state: dict) -> dict:
+        """Do the work. Return ONLY the state keys this agent writes.
+        Should include a 'cot_traces' entry built with self.trace(...)."""
+
+    # ── LangGraph node entry point (wraps run with timing + a2a + retry) ──
+    def __call__(self, state: dict) -> dict:
+        start = time.time()
+        try:
+            updates = self._run_with_retry(state)
+        except Exception as exc:
+            duration = int((time.time() - start) * 1000)
+            return {
+                "cot_traces": [self.trace(f"Agent failed: {exc}", 0.0)],
+                "a2a_messages": [{"from": self.name, "status": "error",
+                                  "error": str(exc), "duration_ms": duration}],
+                "audit": stamp(f"{self.label} ERROR: {exc}"),
+            }
+
+        duration = int((time.time() - start) * 1000)
+
+        # stamp duration onto this agent's trace, and emit an A2A message
+        confidence = None
+        if updates.get("cot_traces"):
+            updates["cot_traces"][-1]["duration_ms"] = duration
+            confidence = updates["cot_traces"][-1].get("confidence")
+
+        updates.setdefault("a2a_messages", [])
+        updates["a2a_messages"].append({
+            "from": self.name, "status": "ok",
+            "confidence": confidence, "duration_ms": duration,
+        })
+        return updates
+
+    @retry(stop=stop_after_attempt(3),
+           wait=wait_exponential(multiplier=1, min=1, max=6),
+           reraise=True)
+    def _run_with_retry(self, state: dict) -> dict:
+        return self.run(state)
+
+    # ── Helpers for subclasses ────────────────────────────────────────────
+    def llm(self, prompt: str, system: str | None = None) -> str:
+        """Plain text generation (e.g. SAR drafting)."""
+        return chat(prompt, system=system)
+
+    def reason(self, system: str, prompt: str) -> tuple[str, float]:
+        """Single chain-of-thought call. Returns (reasoning_text, confidence 0..1)."""
+        raw = chat(prompt, system=_COT_PREFIX + (system or ""))
+        return self._parse_cot(raw)
+
+    def trace(self, reasoning: str, confidence: float, output: dict | None = None) -> dict:
+        """Build a CoT trace entry for the cot_traces accumulator."""
+        return {
+            "agent": self.name,
+            "reasoning": reasoning,
+            "confidence": round(float(confidence), 2),
+            "output": output or {},
+            "duration_ms": 0,   # filled in by __call__
+        }
+
+    @staticmethod
+    def _parse_cot(raw: str) -> tuple[str, float]:
+        """Pull the <reasoning> block and a 'Confidence: NN' score from a response."""
+        reasoning = raw.strip()
+        m = re.search(r"<reasoning>(.*?)</reasoning>", raw, re.DOTALL | re.IGNORECASE)
+        if m:
+            reasoning = m.group(1).strip()
+
+        confidence = 0.8  # sensible default if the model omits it
+        cm = re.search(r"confidence:\s*(\d+)", raw, re.IGNORECASE)
+        if cm:
+            confidence = min(int(cm.group(1)) / 100.0, 1.0)
+        return reasoning, confidence
