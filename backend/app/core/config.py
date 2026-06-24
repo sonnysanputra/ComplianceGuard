@@ -27,6 +27,9 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 # ---- Vector store (kept under backend/ so it's predictable) ----
 CHROMA_PATH = str(BACKEND_DIR / "chroma_db")
 
+# ---- Policy documents the RAG layer indexes (.md / .pdf live here) ----
+POLICIES_DIR = str(BACKEND_DIR / "app" / "tools" / "policies")
+
 # ---- Supabase (read lazily in tools/db.py; surfaced here for visibility) ----
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")

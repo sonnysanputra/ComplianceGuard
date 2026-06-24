@@ -15,82 +15,122 @@ embedder (Ollama) and the reranker run locally, so retrieval costs nothing.
 """
 
 import math
+import hashlib
+import logging
+from pathlib import Path
 
 import chromadb
 from sentence_transformers import CrossEncoder
 from app.services.llm import embed
-from app.core.config import CHROMA_PATH
+from app.core.config import CHROMA_PATH, POLICIES_DIR
 
-# Internal AML policy documents WITH metadata (id / title / section / category)
-# so retrieval can return proper citations. In production these come from PDFs
-# run through a loader; here we hardcode a few representative sections.
-POLICIES = [
-    {"id": "AML-4.2", "title": "AML Escalation Procedure", "section": "4.2",
-     "category": "Escalation",
-     "text": "Transactions involving unusual volume, new high-risk overseas "
-             "recipients, or amounts inconsistent with the customer's declared "
-             "income profile must be escalated for Level 2 compliance review and "
-             "a SAR draft prepared."},
-    {"id": "AML-3.1", "title": "Structuring Detection Policy", "section": "3.1",
-     "category": "Detection",
-     "text": "Multiple transfers made just below reporting thresholds within a "
-             "short time window are a strong indicator of structuring and must be flagged."},
-    {"id": "KYC-2.0", "title": "KYC Review Procedure", "section": "2.0",
-     "category": "KYC",
-     "text": "Declared income must be consistent with transaction volume. A "
-             "significant mismatch requires enhanced due diligence before the "
-             "account continues high-value activity."},
-    {"id": "WL-1.0", "title": "Watchlist Screening Procedure", "section": "1.0",
-     "category": "Screening",
-     "text": "Any sanctions or PEP match, or a strong internal blacklist match, "
-             "must be reported to the compliance officer immediately."},
-    {"id": "HRC-1.0", "title": "High-Risk Country Policy", "section": "1.0",
-     "category": "Jurisdiction",
-     "text": "Transfers to jurisdictions on the high-risk list require additional "
-             "source-of-funds verification."},
-    {"id": "ML-5.1", "title": "Money Mule Policy", "section": "5.1",
-     "category": "Detection",
-     "text": "An account that receives a large inbound transfer and rapidly "
-             "forwards the funds to multiple new recipients exhibits money-mule "
-             "behaviour and must be escalated immediately."},
-    {"id": "LAY-6.1", "title": "Layering & Dispersion Policy", "section": "6.1",
-     "category": "Detection",
-     "text": "Rapid dispersal of funds across many newly added recipients within "
-             "a short time window indicates layering and requires enhanced "
-             "scrutiny and escalation."},
-]
+logger = logging.getLogger(__name__)
 
 # A small, fast cross-encoder reranker (downloads ~80MB on first use).
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-# Bump the collection name when the policy schema changes -> forces a clean rebuild.
-COLLECTION = "aml_policies_v2"
+COLLECTION = "aml_policies"
 
 _collection = None
 _reranker: CrossEncoder | None = None
 
 
+# ======================================================================
+# Policy loading -- documents live as files in backend/policies/ so a
+# compliance team can drop in their OWN .md or .pdf policies. Each .md may
+# carry YAML-style frontmatter (id, title, section, category).
+# ======================================================================
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    meta = {}
+    body = text
+    if text.lstrip().startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            for line in parts[1].strip().splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    meta[k.strip()] = v.strip().strip('"').strip("'")
+            body = parts[2]
+    return meta, body.strip()
+
+
+def _read_pdf(path: Path) -> str:
+    try:
+        import fitz  # PyMuPDF
+        with fitz.open(path) as doc:
+            return " ".join(page.get_text() for page in doc).strip()
+    except Exception as exc:
+        logger.warning(f"[rag] could not read PDF {path.name}: {exc}")
+        return ""
+
+
+def load_policies() -> list[dict]:
+    """Load every policy document from POLICIES_DIR (.md / .txt / .pdf)."""
+    folder = Path(POLICIES_DIR)
+    policies = []
+    if not folder.exists():
+        logger.warning(f"[rag] policies folder not found: {folder}")
+        return policies
+
+    for path in sorted(folder.iterdir()):
+        ext = path.suffix.lower()
+        if ext in (".md", ".txt"):
+            meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
+        elif ext == ".pdf":
+            meta, body = {}, _read_pdf(path)
+        else:
+            continue
+        if not body:
+            continue
+        policies.append({
+            "id": meta.get("id") or path.stem.upper(),
+            "title": meta.get("title") or path.stem.replace("_", " ").title(),
+            "section": meta.get("section", ""),
+            "category": meta.get("category", "General"),
+            "text": body,
+        })
+    return policies
+
+
+def _policies_hash(policies: list[dict]) -> str:
+    h = hashlib.sha256()
+    for p in policies:
+        h.update((p["id"] + p["text"]).encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
 def get_policy_collection():
-    """Return the policy collection, ingesting documents (with metadata) on first
-    call only. Uses cosine distance so retrieval scores are interpretable."""
+    """Return the policy collection. Loads documents from files and rebuilds the
+    vector store whenever the policy set CHANGES (new/edited/removed files),
+    detected via a content hash -- so uploading a new policy re-indexes it."""
     global _collection
     if _collection is not None:
         return _collection
 
+    policies = load_policies()
+    phash = _policies_hash(policies)
+
     chroma = chromadb.PersistentClient(path=CHROMA_PATH)
     coll = chroma.get_or_create_collection(
-        COLLECTION, metadata={"hnsw:space": "cosine"})
+        COLLECTION, metadata={"hnsw:space": "cosine", "policy_hash": phash})
 
-    if coll.count() != len(POLICIES):
-        chroma.delete_collection(COLLECTION)
-        coll = chroma.create_collection(COLLECTION, metadata={"hnsw:space": "cosine"})
+    # rebuild if the document set changed (count or content hash differs)
+    if policies and (coll.count() != len(policies)
+                     or (coll.metadata or {}).get("policy_hash") != phash):
+        try:
+            chroma.delete_collection(COLLECTION)
+        except Exception:
+            pass
+        coll = chroma.create_collection(
+            COLLECTION, metadata={"hnsw:space": "cosine", "policy_hash": phash})
         coll.add(
-            ids=[p["id"] for p in POLICIES],
-            documents=[p["text"] for p in POLICIES],
-            embeddings=embed([p["text"] for p in POLICIES]),
+            ids=[p["id"] for p in policies],
+            documents=[p["text"] for p in policies],
+            embeddings=embed([p["text"] for p in policies]),
             metadatas=[{"id": p["id"], "title": p["title"],
                         "section": p["section"], "category": p["category"]}
-                       for p in POLICIES],
+                       for p in policies],
         )
+        logger.info(f"[rag] indexed {len(policies)} policy documents")
 
     _collection = coll
     return coll
