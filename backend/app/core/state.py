@@ -15,6 +15,7 @@ class CaseState(TypedDict, total=False):
     alert: dict
     case_summary: str
     triage: dict             # alert type, severity, priority, entities, routing
+    memory_findings: dict    # long-term memory: this customer's history
     transaction_findings: dict
     kyc_findings: dict
     watchlist_findings: dict

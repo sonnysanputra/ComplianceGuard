@@ -37,6 +37,7 @@ class RiskScoringAgent(BaseAgent):
         typology = state["transaction_findings"].get("typology", "unknown")
         kf = state["kyc_findings"]
         wf = state["watchlist_findings"]
+        mem = state.get("memory_findings", {})
         policies = state.get("retrieved_policies", [])
 
         # ---- 1. Deterministic baseline (transparent, auditable anchor) ----
@@ -50,7 +51,12 @@ class RiskScoringAgent(BaseAgent):
         if wf["is_match"]:                   rule_score += 25
         if wf["high_risk_country"]:          rule_score += 10
         if kf["previous_alerts"] > 0:        rule_score += 10
-        rule_score = min(rule_score, 100)
+
+        # long-term memory adjustments (repeat offender raises, benign history lowers)
+        if mem.get("previous_escalations", 0) > 0:       rule_score += 15
+        if mem.get("same_recipient_seen_before"):        rule_score += 10
+        if mem.get("memory_risk_direction") == "reduce": rule_score -= 10
+        rule_score = max(0, min(rule_score, 100))
 
         # ---- 2. Qwen's independent AI risk assessment ----
         assessment = self.think(
@@ -66,6 +72,7 @@ class RiskScoringAgent(BaseAgent):
                 f"- prior alerts          : {kf['previous_alerts']}\n"
                 f"- watchlist             : match={wf['is_match']}, verdict={wf.get('verdict')}\n"
                 f"- high-risk country     : {wf['high_risk_country']}\n"
+                f"- LONG-TERM MEMORY      : {mem.get('memory_risk_signal', 'no prior history')}\n"
                 f"- relevant policy       : {policies[0] if policies else 'none'}\n\n"
                 f"RULE-BASED BASELINE SCORE: {rule_score}/100\n\n"
                 "Return ONLY this JSON:\n"

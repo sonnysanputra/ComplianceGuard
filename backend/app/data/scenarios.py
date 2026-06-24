@@ -46,4 +46,14 @@ SCENARIOS = [
         "num_transactions": 1,
         "_expected": "False positive -> LOW risk -> early exit (no SAR)",
     },
+    {
+        "id": "AML-2026-005",
+        "customer_id": "CUST-10291",
+        "reason": "Further transfers just under the threshold to the same overseas recipient",
+        "recipient": "Global Trade Ltd",
+        "country": "Cambodia",
+        "total_amount": 29400,
+        "num_transactions": 3,
+        "_expected": "Repeat offender -> long-term memory boosts risk (run & approve case 1 first)",
+    },
 ]

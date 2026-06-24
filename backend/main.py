@@ -12,6 +12,7 @@ import app.core.config  # noqa: F401 -- importing this loads .env before anythin
 from langgraph.types import Command
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
+from app.services.persistence import persist_case, persist_decision
 
 
 def pick_scenario() -> dict:
@@ -48,6 +49,7 @@ def main():
     tri = snap.get("triage", {})
     kyc = snap.get("kyc_findings", {})
     wl = snap.get("watchlist_findings", {})
+    mem = snap.get("memory_findings", {})
     rev = snap.get("review", {})
 
     print("\n" + "-" * 70)
@@ -61,6 +63,7 @@ def main():
         print(f"               key concern: {kyc.get('key_concern')}")
     print(f"  Watchlist  : {wl.get('verdict')} "
           f"(best {wl.get('match_score')}% on {wl.get('list_type')})")
+    print(f"  Memory     : {mem.get('memory_risk_signal')} [{mem.get('memory_risk_direction')}]")
 
     print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
@@ -103,6 +106,7 @@ def main():
 
     # ---- Human-in-the-loop: the graph is paused, waiting for a decision ----
     if "__interrupt__" in result:
+        persist_case(snap, status="awaiting_decision")   # save before the human acts
         print("\n" + "=" * 70)
         print("  ⏸  PAUSED — waiting for human analyst decision")
         print("=" * 70)
@@ -111,9 +115,12 @@ def main():
         # Resume the graph from exactly where it paused
         graph.invoke(Command(resume=decision), config)
         final = graph.get_state(config).values
+        persist_decision(final["alert"]["id"], decision)
+        persist_case(final, status="closed")
         print(f"\n✅ Case closed. Human decision recorded: {final['human_decision']}")
     else:
         # Low-risk path: scored under threshold, exited before SAR drafting
+        persist_case(snap, status="auto_closed")
         print("\n" + "=" * 70)
         print("  ✅ AUTO-CLOSED — low risk, no SAR needed (early exit saved LLM calls)")
         print("=" * 70)

@@ -23,6 +23,9 @@ from langgraph.types import Command
 
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
+from app.services.persistence import (
+    persist_case, persist_decision, list_cases, get_case_events,
+)
 
 app = FastAPI(title="CompliGuard AI", version="1.0")
 
@@ -110,7 +113,10 @@ def investigate(alert: Alert):
     case_id = alert.id
     cfg = {"configurable": {"thread_id": case_id}}
     graph.invoke({"alert": alert.model_dump()}, cfg)
-    return _snapshot(case_id)
+    snap = _snapshot(case_id)
+    # persist the full state (audit trail survives restarts)
+    persist_case(graph.get_state(cfg).values, status=snap["status"])
+    return snap
 
 
 @app.get("/case/{case_id}")
@@ -123,4 +129,19 @@ def decide(case_id: str, body: Decision):
     """Resume a paused case with the analyst's decision."""
     cfg = {"configurable": {"thread_id": case_id}}
     graph.invoke(Command(resume=body.decision), cfg)
+    persist_decision(case_id, body.decision)
+    persist_case(graph.get_state(cfg).values, status="closed")
     return _snapshot(case_id)
+
+
+# ---- Case history (read from the persisted audit tables) ----
+@app.get("/cases")
+def cases(limit: int = 50):
+    """List investigated cases (survives server restarts)."""
+    return list_cases(limit)
+
+
+@app.get("/case/{case_id}/events")
+def case_events(case_id: str):
+    """The persisted audit timeline for a case."""
+    return get_case_events(case_id)

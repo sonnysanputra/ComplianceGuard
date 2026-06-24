@@ -28,6 +28,11 @@ def _db() -> Client:
     return _client
 
 
+def client() -> Client:
+    """Public accessor for the Supabase client (used by the persistence layer)."""
+    return _db()
+
+
 # ======================================================================
 # TOOL FUNCTIONS  -- query Supabase, no LLM, no model cost
 # ======================================================================

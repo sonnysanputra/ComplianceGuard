@@ -8,7 +8,8 @@ Flow (mirrors the proposal's high-level workflow):
         |-> transaction_analysis -|
         |-> kyc_profile           |  (run in parallel)
         |-> watchlist_screening   |
-        |-> policy_rag           -|
+        |-> policy_rag            |
+        |-> case_memory          -|  (long-term memory: customer history)
                 -> risk_scoring
                     -> [score >= 60] sar_drafting -> compliance_review -> human_approval -> END
                     -> [score <  60] END   (low-risk early exit -- cost saver)
@@ -25,6 +26,7 @@ from app.agents.transaction_analysis import transaction_analysis
 from app.agents.kyc_profile import kyc_profile
 from app.agents.watchlist_screening import watchlist_screening
 from app.agents.policy_rag import policy_rag
+from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
 from app.agents.sar_drafting import sar_drafting
 from app.agents.compliance_review import compliance_review
@@ -44,6 +46,7 @@ def build_graph():
     g.add_node("kyc_profile", kyc_profile)
     g.add_node("watchlist_screening", watchlist_screening)
     g.add_node("policy_rag", policy_rag)
+    g.add_node("case_memory", case_memory)
     g.add_node("risk_scoring", risk_scoring)
     g.add_node("sar_drafting", sar_drafting)
     g.add_node("compliance_review", compliance_review)
@@ -51,11 +54,11 @@ def build_graph():
 
     g.add_edge(START, "alert_intake")
 
-    # fan-out: 4 investigation agents run in parallel after intake
+    # fan-out: 5 investigation agents run in parallel after intake
     for node in ["transaction_analysis", "kyc_profile",
-                 "watchlist_screening", "policy_rag"]:
+                 "watchlist_screening", "policy_rag", "case_memory"]:
         g.add_edge("alert_intake", node)
-        g.add_edge(node, "risk_scoring")   # fan-in: risk waits for all 4
+        g.add_edge(node, "risk_scoring")   # fan-in: risk waits for all 5
 
     g.add_conditional_edges("risk_scoring", route_after_scoring)
     g.add_edge("sar_drafting", "compliance_review")
