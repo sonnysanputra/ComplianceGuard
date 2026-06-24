@@ -22,13 +22,16 @@ pause/resume works across separate HTTP requests within the running server.
 import app.core.config  # noqa: F401 -- loads .env first
 
 import json
+import logging
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.types import Command
+
+logger = logging.getLogger("compliguard.api")
 
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
@@ -72,6 +75,15 @@ app = FastAPI(title="CompliGuard AI", version="1.0",
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    """Any unexpected error returns a clean JSON 500 (no leaked traceback)."""
+    logger.exception(f"Unhandled error on {request.method} {request.url.path}")
+    return JSONResponse(status_code=500,
+                        content={"detail": f"Internal error: {type(exc).__name__}"})
+
 
 # one graph for the process; the checkpointer holds each case's state in memory
 graph = build_graph()
@@ -324,6 +336,26 @@ def _build_report(snap: dict) -> str:
 @app.get("/health", response_model=HealthResponse)
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def ready():
+    """Deep readiness check -- confirms the LLM (Ollama) and database (Supabase)
+    are actually reachable. Useful before a live demo."""
+    deps = {}
+    try:
+        from app.services.llm import _client
+        _client.models.list()
+        deps["ollama"] = "ok"
+    except Exception as exc:
+        deps["ollama"] = f"error: {type(exc).__name__}"
+    try:
+        from app.tools.db import client
+        client().table("customers").select("customer_id").limit(1).execute()
+        deps["supabase"] = "ok"
+    except Exception as exc:
+        deps["supabase"] = f"error: {type(exc).__name__}"
+    return {"ready": all(v == "ok" for v in deps.values()), "dependencies": deps}
 
 
 @app.get("/scenarios")

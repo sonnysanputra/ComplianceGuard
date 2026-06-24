@@ -176,4 +176,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+    except Exception as exc:
+        msg = str(exc)
+        print(f"\n❌ Error: {type(exc).__name__}: {exc}")
+        if "11434" in msg or "Connection" in msg or "connect" in msg.lower():
+            print("   → Is Ollama running? Start it, then `ollama list` to confirm "
+                  "qwen2.5 + nomic-embed-text are installed.")
+        if "SUPABASE" in msg.upper():
+            print("   → Check your backend/.env Supabase URL and secret key.")
