@@ -35,6 +35,7 @@ logger = logging.getLogger("compliguard.api")
 
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
+from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
 )
@@ -361,6 +362,22 @@ def ready():
 @app.get("/scenarios")
 def scenarios():
     return SCENARIOS
+
+
+@app.get("/policies")
+def policies():
+    """List the policy documents currently available to the RAG layer."""
+    return [{"policy_id": p["id"], "title": p["title"], "section": p["section"],
+             "category": p["category"]} for p in load_policies()]
+
+
+@app.post("/policies/reindex")
+def policies_reindex():
+    """Re-index the policy folder -- picks up newly added or edited .md/.pdf
+    policy files WITHOUT restarting the server."""
+    reset_policy_collection()
+    docs = load_policies()
+    return {"reindexed": len(docs), "policies": [p["id"] for p in docs]}
 
 
 @app.post("/investigate", response_model=CaseSnapshot)

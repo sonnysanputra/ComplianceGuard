@@ -136,6 +136,14 @@ def get_policy_collection():
     return coll
 
 
+def reset_policy_collection():
+    """Drop the cached collection so the next access re-loads the policy files
+    and re-indexes them. Call this after adding/editing a policy at runtime."""
+    global _collection
+    _collection = None
+    return get_policy_collection()
+
+
 def _get_reranker() -> CrossEncoder:
     """Lazily load the cross-encoder reranker on first use."""
     global _reranker
