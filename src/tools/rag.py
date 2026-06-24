@@ -33,6 +33,12 @@ POLICIES = [
                 "compliance officer immediately."),
     ("HRC-1.0", "High-Risk Country Policy 1.0: Transfers to jurisdictions on the "
                 "high-risk list require additional source-of-funds verification."),
+    ("ML-5.1",  "Money Mule Policy 5.1: An account that receives a large inbound "
+                "transfer and rapidly forwards the funds to multiple new recipients "
+                "exhibits money-mule behaviour and must be escalated immediately."),
+    ("LAY-6.1", "Layering & Dispersion Policy 6.1: Rapid dispersal of funds across "
+                "many newly added recipients within a short time window indicates "
+                "layering and requires enhanced scrutiny and escalation."),
 ]
 
 # A small, fast cross-encoder reranker (downloads ~80MB on first use).
@@ -50,10 +56,16 @@ def get_policy_collection():
 
     chroma = chromadb.PersistentClient(path="./chroma_db")
     coll = chroma.get_or_create_collection("aml_policies")
-    if coll.count() == 0:
+
+    # Rebuild if empty OR if the policy list changed (keeps the vector store
+    # in sync with POLICIES without manually deleting chroma_db/).
+    if coll.count() != len(POLICIES):
+        chroma.delete_collection("aml_policies")
+        coll = chroma.create_collection("aml_policies")
         ids = [p[0] for p in POLICIES]
         docs = [p[1] for p in POLICIES]
         coll.add(ids=ids, documents=docs, embeddings=embed(docs))
+
     _collection = coll
     return coll
 

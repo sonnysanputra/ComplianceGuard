@@ -1,0 +1,49 @@
+"""
+Demo alerts covering different AML typologies.
+
+Each maps to seeded data in schema.sql so the pipeline produces a different,
+realistic outcome -- proving the system generalizes instead of memorizing.
+"""
+
+SCENARIOS = [
+    {
+        "id": "AML-2026-001",
+        "customer_id": "CUST-10291",
+        "reason": "Multiple transfers just under the reporting threshold to a new overseas recipient",
+        "recipient": "Global Trade Ltd",
+        "country": "Cambodia",
+        "total_amount": 29400,
+        "num_transactions": 3,
+        "_expected": "Structuring -> HIGH risk -> SAR",
+    },
+    {
+        "id": "AML-2026-002",
+        "customer_id": "CUST-30877",
+        "reason": "Large incoming transfer rapidly forwarded to multiple new recipients",
+        "recipient": "Multiple recipients",
+        "country": "Malaysia",
+        "total_amount": 46000,
+        "num_transactions": 4,
+        "_expected": "Money mule -> HIGH risk -> SAR",
+    },
+    {
+        "id": "AML-2026-003",
+        "customer_id": "CUST-40233",
+        "reason": "Funds dispersed across many new recipients in a short period",
+        "recipient": "Multiple recipients",
+        "country": "Malaysia",
+        "total_amount": 24000,
+        "num_transactions": 8,
+        "_expected": "Layering/dispersion -> elevated risk -> SAR",
+    },
+    {
+        "id": "AML-2026-004",
+        "customer_id": "CUST-20555",
+        "reason": "High-value transfer flagged by amount threshold",
+        "recipient": "Supplier ABC Sdn Bhd",
+        "country": "Malaysia",
+        "total_amount": 20000,
+        "num_transactions": 1,
+        "_expected": "False positive -> LOW risk -> early exit (no SAR)",
+    },
+]
