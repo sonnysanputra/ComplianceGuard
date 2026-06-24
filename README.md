@@ -14,39 +14,58 @@ Bank compliance teams receive hundreds of suspicious-activity alerts daily. Each
 
 ---
 
-## How it works
+## Architecture
 
-A LangGraph pipeline of 9 specialized agents. Four investigation agents run in parallel, results fan into risk scoring, and low-risk cases exit early (saving LLM calls):
+A LangGraph pipeline organised into three stages. Stage 2's four investigation
+agents run **in parallel**; results fan into risk scoring; low-risk cases exit
+early before the expensive drafting step.
 
+```mermaid
+flowchart TD
+    A([Suspicious Activity Alert]) --> B
+
+    subgraph S1["Stage 1 · Intake & Triage"]
+        B["Alert Intake Agent<br/><i>classify type/severity · P1–P4 priority · route</i>"]
+    end
+
+    B --> C1 & C2 & C3 & C4
+
+    subgraph S2["Stage 2 · Parallel Investigation"]
+        C1["Transaction Analysis<br/><i>detect ML typology</i>"]
+        C2["KYC Profile<br/><i>5 consistency checks + EDD</i>"]
+        C3["Watchlist Screening<br/><i>dual-party · sanctions/PEP/blacklist</i>"]
+        C4["Policy RAG<br/><i>vector recall + cross-encoder rerank</i>"]
+    end
+
+    C1 & C2 & C3 & C4 --> D
+
+    subgraph S3["Stage 3 · Risk & Reporting"]
+        D["Risk Scoring<br/><i>rule baseline ⊕ Qwen assessment</i>"]
+        D --> E{"score ≥ 60 ?"}
+        E -- no --> F["Auto-close<br/><i>low risk · no SAR</i>"]
+        E -- yes --> G["SAR Drafting"]
+        G --> H["Compliance Review<br/><i>evidence validation</i>"]
+    end
+
+    H --> I([⏸ Human Approval — approve / reject / edit])
+    I --> J([Approved SAR + Audit Trail])
 ```
-                        ┌─> Transaction Analysis ─┐
-  Alert Intake ────────>├─> KYC Profile           ├─> Risk Scoring
-   (triage)             ├─> Watchlist Screening   │       │
-                        └─> Policy RAG ───────────┘       │
-                                                    [score >= 60?]
-                                              ┌───────────┴───────────┐
-                                         no (low risk)           yes (high risk)
-                                              │                       │
-                                         AUTO-CLOSE          SAR Drafting
-                                                                      │
-                                                            Compliance Review
-                                                                      │
-                                                        ⏸ Human Approval (HITL)
-```
 
-### The agents
+## Agent pipeline
 
-| # | Agent | What it does | Tech |
-|---|-------|--------------|------|
-| 4.1 | **Alert Intake** | Triage: classifies type/severity, assigns P1–P4 priority, extracts entities, routes | rules + LLM |
-| 4.2 | **Transaction Analysis** | Detects typology (structuring, mule, layering, overseas, volume spike) | rules + LLM |
-| 4.3 | **KYC Profile** | 5 consistency checks (income, occupation, account age, risk, history) + EDD trigger | rules + LLM |
-| 4.4 | **Watchlist Screening** | Dual-party (customer + recipient) × all lists (sanctions/PEP/blacklist) | fuzzy match |
-| 4.5 | **Policy RAG** | Retrieves relevant AML policies (vector recall → cross-encoder rerank) | RAG |
-| 4.6 | **Risk Scoring** | Blends a transparent rule baseline with an independent Qwen assessment | rules + LLM |
-| 4.7 | **SAR Drafting** | Writes the structured SAR draft | LLM |
-| 4.8 | **Compliance Review** | Validates every claim is evidence-backed; scores completeness + quality | rules + LLM |
-| 4.9 | **Human Approval** | Pauses the graph for analyst approve/reject/edit | HITL |
+| # | Agent | Stage | Responsibility |
+|---|-------|-------|----------------|
+| 1 | **Alert Intake** | Intake & Triage | Classifies the alert type and severity, assigns a **P1–P4** case priority, extracts the key entities, and decides which investigations to trigger |
+| 2 | **Transaction Analysis** | Investigation | Aggregates transaction facts and detects the ML **typology** — structuring, money mule, layering/dispersion, high-risk overseas, or volume spike |
+| 3 | **KYC Profile** | Investigation | Runs **5 consistency checks** (income, occupation, account age, risk category, prior alerts) and triggers **Enhanced Due Diligence** |
+| 4 | **Watchlist Screening** | Investigation | Fuzzy-screens **both customer and recipient** against sanctions / PEP / internal blacklist; returns all matches and an aggregate verdict |
+| 5 | **Policy RAG** | Investigation | Retrieves the most relevant internal AML policies via **vector recall + cross-encoder reranking** |
+| 6 | **Risk Scoring** | Risk & Reporting | Blends a transparent **rule-based baseline** with an independent **Qwen assessment** into a final score, level, and recommendation |
+| 7 | **SAR Drafting** | Risk & Reporting | Generates a structured **Suspicious Activity Report** draft grounded in the findings and cited policy |
+| 8 | **Compliance Review** | Risk & Reporting | Validates that **every claim is evidence-backed**; scores completeness and quality |
+| 9 | **Human Approval** | HITL | Pauses the pipeline for the analyst to **approve, reject, or edit** before anything is filed |
+
+> Every agent extends `BaseAgent` and emits a chain-of-thought reasoning trace, a **confidence score**, and an agent-to-agent (A2A) status message — producing a full **audit timeline** and per-agent confidence for every case.
 
 ### Design principles
 
