@@ -11,3 +11,4 @@ uvicorn[standard]
 fpdf2
 python-docx
 PyMuPDF
+pytest
