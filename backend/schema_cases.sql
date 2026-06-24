@@ -72,9 +72,11 @@ create table if not exists sar_drafts (
 
 -- The human-in-the-loop decisions
 create table if not exists human_decisions (
-    id          bigserial primary key,
-    case_id     text references cases(case_id),
-    decision    text,            -- approve | reject | edit
-    notes       text,
-    created_at  timestamptz default now()
+    id               bigserial primary key,
+    case_id          text references cases(case_id),
+    decision         text,       -- approve | reject | edit | request_more_info
+    analyst_id       text,
+    notes            text,       -- reason / requested info
+    final_risk_level text,       -- analyst override of the risk level
+    created_at       timestamptz default now()
 );

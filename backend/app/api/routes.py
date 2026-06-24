@@ -16,6 +16,8 @@ pause/resume works across separate HTTP requests within the running server.
 
 import app.core.config  # noqa: F401 -- loads .env first
 
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -53,7 +55,12 @@ class Alert(BaseModel):
 
 
 class Decision(BaseModel):
-    decision: str   # "approve" | "reject" | "edit"
+    decision: Literal["approve", "reject", "request_more_info", "edit"]
+    analyst_id: str
+    analyst_note: str | None = None
+    edited_sar_draft: str | None = None
+    final_risk_level: str | None = None
+    rerun_targets: list[str] | None = None   # which agents to re-run on request_more_info
 
 
 def _snapshot(case_id: str) -> dict:
@@ -92,6 +99,7 @@ def _snapshot(case_id: str) -> dict:
         "sar_draft": v.get("sar_draft"),
         "review": v.get("review"),
         "human_decision": v.get("human_decision"),
+        "human_review": v.get("human_review"),
         "audit": sorted(v.get("audit", [])),
         "cot_traces": v.get("cot_traces"),
         "a2a_messages": v.get("a2a_messages"),
@@ -128,12 +136,15 @@ def get_case(case_id: str):
 
 @app.post("/case/{case_id}/decision")
 def decide(case_id: str, body: Decision):
-    """Resume a paused case with the analyst's decision."""
+    """Resume a paused case with the analyst's structured decision.
+    'request_more_info' re-runs the investigation and pauses again."""
     cfg = {"configurable": {"thread_id": case_id}}
-    graph.invoke(Command(resume=body.decision), cfg)
-    persist_decision(case_id, body.decision)
-    persist_case(graph.get_state(cfg).values, status="closed")
-    return _snapshot(case_id)
+    graph.invoke(Command(resume=body.model_dump()), cfg)
+    persist_decision(case_id, body.decision, analyst_id=body.analyst_id,
+                     notes=body.analyst_note, final_risk_level=body.final_risk_level)
+    snap = _snapshot(case_id)
+    persist_case(graph.get_state(cfg).values, status=snap["status"])
+    return snap
 
 
 # ---- Case history (read from the persisted audit tables) ----

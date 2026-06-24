@@ -119,20 +119,32 @@ def main():
     for line in sorted(snap.get("audit", [])):
         print(" ", line)
 
-    # ---- Human-in-the-loop: the graph is paused, waiting for a decision ----
+    # ---- Human-in-the-loop: the graph pauses for a structured decision ----
     if "__interrupt__" in result:
-        persist_case(snap, status="awaiting_decision")   # save before the human acts
-        print("\n" + "=" * 70)
-        print("  ⏸  PAUSED — waiting for human analyst decision")
-        print("=" * 70)
-        decision = input("Approve escalation? (approve / reject / edit): ").strip() or "approve"
+        # request_more_info re-runs the investigation, so loop until a final decision
+        while "__interrupt__" in result:
+            persist_case(graph.get_state(config).values, status="awaiting_decision")
+            print("\n" + "=" * 70)
+            print("  ⏸  PAUSED — analyst decision required")
+            print("=" * 70)
+            decision = input("Decision (approve / reject / edit / request_more_info): ").strip() or "approve"
+            note = None
+            if decision in ("reject", "request_more_info"):
+                note = input("Reason / info needed: ").strip() or None
 
-        # Resume the graph from exactly where it paused
-        graph.invoke(Command(resume=decision), config)
-        final = graph.get_state(config).values
-        persist_decision(final["alert"]["id"], decision)
-        persist_case(final, status="closed")
-        print(f"\n✅ Case closed. Human decision recorded: {final['human_decision']}")
+            payload = {"decision": decision, "analyst_id": "cli-analyst", "analyst_note": note}
+            result = graph.invoke(Command(resume=payload), config)
+            final = graph.get_state(config).values
+            persist_decision(final["alert"]["id"], decision,
+                             analyst_id="cli-analyst", notes=note)
+
+            if decision == "request_more_info" and "__interrupt__" in result:
+                print("\n🔁 Re-investigating with the request on record...")
+                continue
+            persist_case(final, status="closed")
+            print(f"\n✅ Case closed. Decision: {decision}"
+                  + (f" — {note}" if note else ""))
+            break
     else:
         # Low-risk path: scored under threshold, exited before SAR drafting
         persist_case(snap, status="auto_closed")

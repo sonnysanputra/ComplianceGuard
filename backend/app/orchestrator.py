@@ -20,6 +20,11 @@ from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
+# the five investigation agents that run in parallel
+INVESTIGATION = ["transaction_analysis", "kyc_profile",
+                 "watchlist_screening", "policy_rag", "case_memory"]
+MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
+
 from app.core.state import CaseState
 from app.agents.alert_intake import alert_intake
 from app.agents.transaction_analysis import transaction_analysis
@@ -36,6 +41,17 @@ from app.agents.human_approval import human_approval
 # Low-risk cases exit BEFORE the expensive SAR drafting node.
 def route_after_scoring(state: CaseState) -> Literal["sar_drafting", "__end__"]:
     return "sar_drafting" if state["risk_score"] >= 60 else END
+
+
+# After the human acts: 'request_more_info' re-runs the investigation (bounded),
+# every other decision ends the case.
+def route_after_approval(state: CaseState):
+    if (state.get("human_decision") == "request_more_info"
+            and state.get("more_info_rounds", 0) <= MAX_MORE_INFO_ROUNDS):
+        targets = (state.get("human_review", {}) or {}).get("rerun_targets")
+        targets = [t for t in (targets or []) if t in INVESTIGATION] or INVESTIGATION
+        return targets        # fan back out to these investigation agents
+    return END
 
 
 def build_graph():
@@ -55,14 +71,14 @@ def build_graph():
     g.add_edge(START, "alert_intake")
 
     # fan-out: 5 investigation agents run in parallel after intake
-    for node in ["transaction_analysis", "kyc_profile",
-                 "watchlist_screening", "policy_rag", "case_memory"]:
+    for node in INVESTIGATION:
         g.add_edge("alert_intake", node)
         g.add_edge(node, "risk_scoring")   # fan-in: risk waits for all 5
 
     g.add_conditional_edges("risk_scoring", route_after_scoring)
     g.add_edge("sar_drafting", "compliance_review")
     g.add_edge("compliance_review", "human_approval")
-    g.add_edge("human_approval", END)
+    # human decision: request_more_info loops back to investigate; else END
+    g.add_conditional_edges("human_approval", route_after_approval, INVESTIGATION + [END])
 
     return g.compile(checkpointer=MemorySaver())

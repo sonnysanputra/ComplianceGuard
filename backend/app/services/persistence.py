@@ -108,15 +108,19 @@ def persist_case(state: dict, status: str) -> bool:
         return False
 
 
-def persist_decision(case_id: str, decision: str, notes: str | None = None) -> bool:
-    """Record a human decision and mark the case closed."""
+def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
+                     notes: str | None = None, final_risk_level: str | None = None) -> bool:
+    """Record a structured human decision and update the case status."""
     try:
         db = client()
         db.table("human_decisions").insert({
-            "case_id": case_id, "decision": decision, "notes": notes,
+            "case_id": case_id, "decision": decision, "analyst_id": analyst_id,
+            "notes": notes, "final_risk_level": final_risk_level,
         }).execute()
+        # request_more_info keeps the case open; everything else closes it
+        status = "needs_more_info" if decision == "request_more_info" else "closed"
         db.table("cases").update(
-            {"status": "closed", "updated_at": _now()}
+            {"status": status, "updated_at": _now()}
         ).eq("case_id", case_id).execute()
         return True
     except Exception as exc:

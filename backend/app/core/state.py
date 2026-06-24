@@ -31,6 +31,8 @@ class CaseState(TypedDict, total=False):
     sar_draft: str
     review: dict
     human_decision: str
+    human_review: dict       # full analyst decision: id, note, overrides
+    more_info_rounds: int    # how many times the analyst asked to re-investigate
 
     # --- observability accumulators (each agent appends; never overwrites) ---
     audit: Annotated[list, add]         # timestamped human-readable timeline
