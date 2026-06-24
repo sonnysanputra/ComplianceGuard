@@ -8,3 +8,5 @@ sentence-transformers
 tenacity
 fastapi
 uvicorn[standard]
+fpdf2
+python-docx

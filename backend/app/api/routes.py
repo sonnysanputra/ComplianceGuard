@@ -205,23 +205,117 @@ def _snapshot(case_id: str) -> dict:
     }
 
 
-def _build_report(snap: dict) -> str:
-    """Assemble a Markdown case report for export/download."""
-    lines = [f"# Case Report — {snap['case_id']}", "",
-             f"**Status:** {snap.get('status')}  ",
-             f"**Risk:** {snap.get('risk_score')}/100 ({snap.get('risk_level')})  ",
-             f"**Recommendation:** {snap.get('recommendation')}", ""]
+def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
+    """The full SAR report content as (heading, lines) sections."""
+    tri = snap.get("triage") or {}
+    tf = snap.get("transaction_findings") or {}
+    kyc = snap.get("kyc_findings") or {}
+    wl = snap.get("watchlist_findings") or {}
+    mem = snap.get("memory_findings") or {}
+    hr = snap.get("human_review") or {}
+    cust_id = (tri.get("entities") or {}).get("customer_id", "-")
+
+    sections = [
+        ("Case Overview", [
+            f"Case ID: {snap.get('case_id')}",
+            f"Customer ID: {cust_id}",
+            f"Status: {snap.get('status')}",
+            f"Alert type: {tri.get('alert_type')}  |  Priority: {tri.get('priority')}",
+        ]),
+        ("Risk Assessment", [
+            f"Final score: {snap.get('risk_score')}/100 ({snap.get('risk_level')})",
+            f"Rule baseline: {snap.get('rule_score')}  |  AI assessment: {snap.get('ai_score')}",
+            f"Recommendation: {snap.get('recommendation')}",
+            f"Explanation: {snap.get('risk_explanation')}",
+        ]),
+    ]
     if snap.get("risk_factors"):
-        lines += ["## Risk Factor Breakdown", ""]
-        for f in snap["risk_factors"]:
-            lines.append(f"- **{f.get('points'):+} {f.get('factor')}** — {f.get('evidence')}")
-        lines.append("")
+        sections.append(("Risk Factor Breakdown", [
+            f"{f.get('points'):+} {f.get('factor')} - {f.get('evidence')}"
+            for f in snap["risk_factors"]]))
+    sections.append(("Agent Findings", [
+        f"Typology: {tf.get('typology')}",
+        f"KYC: {kyc.get('consistency')} | checks failed: {kyc.get('checks_failed')} "
+        f"| EDD: {kyc.get('edd_required')}",
+        f"Watchlist: {wl.get('verdict')} (best {wl.get('match_score')}% on {wl.get('list_type')})",
+        f"Memory: {mem.get('memory_risk_signal')}",
+    ]))
+    if snap.get("retrieved_policies"):
+        sections.append(("Policy References", [
+            f"{p.get('policy_id')}: {p.get('title')} (section {p.get('section')})"
+            for p in snap["retrieved_policies"]]))
     if snap.get("sar_draft"):
-        lines += ["## SAR Draft", "", snap["sar_draft"], ""]
+        sections.append(("SAR Draft", snap["sar_draft"].split("\n")))
+    if hr:
+        sections.append(("Human Decision", [
+            f"Decision: {hr.get('decision')}",
+            f"Analyst: {hr.get('analyst_id')}",
+            f"Note: {hr.get('analyst_note') or '-'}",
+            f"Risk-level override: {hr.get('final_risk_level') or '-'}",
+        ]))
+    elif snap.get("human_decision"):
+        sections.append(("Human Decision", [f"Decision: {snap.get('human_decision')}"]))
     if snap.get("audit"):
-        lines += ["## Audit Timeline", ""]
-        lines += [f"- {a}" for a in snap["audit"]]
-    return "\n".join(lines)
+        sections.append(("Audit Timeline", list(snap["audit"])))
+    return sections
+
+
+def _report_md(snap: dict) -> str:
+    out = [f"# Suspicious Activity Report - {snap.get('case_id')}", ""]
+    for title, lines in _report_sections(snap):
+        out.append(f"## {title}")
+        out.append("")
+        out += (lines if title == "SAR Draft" else [f"- {l}" for l in lines])
+        out.append("")
+    return "\n".join(out)
+
+
+def _ascii(s) -> str:
+    """fpdf core fonts are Latin-1 only -- replace common unicode."""
+    return (str(s).replace("—", "-").replace("–", "-").replace("→", "->")
+            .replace("✓", "[OK]").replace("…", "...").replace("’", "'")
+            .encode("latin-1", "replace").decode("latin-1"))
+
+
+def _report_pdf(snap: dict) -> bytes:
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.set_margins(15, 15, 15)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    def line(text, size=10, bold=False, gap=0):
+        pdf.set_font("Helvetica", "B" if bold else "", size)
+        pdf.set_x(pdf.l_margin)
+        if gap:
+            pdf.ln(gap)
+        pdf.multi_cell(pdf.epw, size * 0.55 + 1, _ascii(text) or " ", wrapmode="CHAR")
+
+    line(f"Suspicious Activity Report - {snap.get('case_id')}", size=16, bold=True)
+    for title, lines in _report_sections(snap):
+        line(title, size=13, bold=True, gap=3)
+        for l in lines:
+            line(l, size=10)
+    return bytes(pdf.output())
+
+
+def _report_docx(snap: dict) -> bytes:
+    from io import BytesIO
+    from docx import Document
+    doc = Document()
+    doc.add_heading(f"Suspicious Activity Report - {snap.get('case_id')}", level=0)
+    for title, lines in _report_sections(snap):
+        doc.add_heading(title, level=1)
+        for l in lines:
+            doc.add_paragraph(str(l))
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _build_report(snap: dict) -> str:
+    """Backwards-compatible Markdown report (used by POST /case/{id}/export)."""
+    return _report_md(snap)
 
 
 # ======================================================================
@@ -362,4 +456,23 @@ def export_case(case_id: str):
     return Response(
         content=report, media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{case_id}_report.md"'},
+    )
+
+
+@app.post("/case/{case_id}/export-sar")
+def export_sar(case_id: str, format: Literal["pdf", "markdown", "docx"] = "pdf"):
+    """Download the full SAR report as PDF, Markdown, or DOCX. Includes case info,
+    risk score + factors, agent findings, policy references, the SAR draft, the
+    human decision, and the audit timeline."""
+    snap = _snapshot(case_id)
+    builders = {
+        "pdf":      (_report_pdf,  "application/pdf", "pdf"),
+        "docx":     (_report_docx, "application/vnd.openxmlformats-officedocument."
+                                   "wordprocessingml.document", "docx"),
+        "markdown": (lambda s: _report_md(s).encode(), "text/markdown", "md"),
+    }
+    build, media, ext = builders[format]
+    return Response(
+        content=build(snap), media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{case_id}_SAR.{ext}"'},
     )
