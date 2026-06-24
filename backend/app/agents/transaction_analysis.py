@@ -9,11 +9,29 @@ kept as a grounding signal + safety fallback if the LLM response can't be parsed
 
 from datetime import datetime
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.tools.db import get_transactions, HIGH_RISK_COUNTRIES
 
 REPORTING_THRESHOLD = 10_000   # RM -- amounts just under this suggest structuring
+
+SYSTEM_PROMPT = """You are a senior AML transaction analyst at a bank, reviewing a \
+flagged customer's activity.
+
+YOUR JOB
+Explain the suspicious pattern and list the specific red flags, reasoning ONLY from
+the facts and computed signals provided. Never invent data. Do not describe a country
+as high-risk unless it appears in the provided high_risk_countries list.
+
+MONEY-LAUNDERING TYPOLOGIES (what each looks like)
+- structuring          : repeated transfers kept just under the reporting threshold
+- money mule           : large inbound funds rapidly forwarded to several new recipients
+- layering / dispersion: funds split across many newly added recipients in a short window
+- high-risk overseas   : transfers to flagged jurisdictions
+- volume spike         : activity far above the customer's own historical baseline
+
+Each red flag must be a concrete, fact-based observation (cite the number), not a generic phrase.
+"""
 
 
 class TransactionAnalysisAgent(BaseAgent):
@@ -69,21 +87,27 @@ class TransactionAnalysisAgent(BaseAgent):
 
         # ---- 3. Qwen reasons about the detected pattern (grounded in signals) ----
         analysis = self.think(
-            system=("You are an AML transaction analyst. Explain the detected "
-                    "money-laundering pattern using ONLY the facts and signals given. "
-                    "Do not invent facts (e.g. do not call a country high-risk unless "
-                    "it appears in the high_risk_countries list)."),
-            prompt=(f"Detected typology: {typology}\n"
-                    f"Transaction facts:\n{facts}\n"
-                    f"Computed signals: {rule_flags}\n\n"
-                    'Return JSON: {"red_flags": ["..."], "confidence": <0-100>, '
-                    '"reasoning": "<2-3 sentence explanation>"}'),
+            system=SYSTEM_PROMPT,
+            prompt=(
+                f"DETECTED TYPOLOGY (from rules): {typology}\n\n"
+                f"TRANSACTION FACTS:\n{facts}\n\n"
+                f"COMPUTED SIGNALS (true = triggered):\n{rule_flags}\n\n"
+                "Return ONLY this JSON (each red flag gets its own confidence):\n"
+                "{\n"
+                '  "reasoning": "<2-3 sentences on why this pattern is or is not suspicious>",\n'
+                '  "red_flags": [\n'
+                '    {"flag": "<concrete fact-based observation>", "confidence": <0-100>}\n'
+                "  ],\n"
+                '  "confidence": <0-100, your confidence the typology label is correct>\n'
+                "}\n\n"
+                f"{CONFIDENCE_RUBRIC}"
+            ),
         )
 
         reasoning = analysis.get("reasoning") or f"Detected pattern: {typology}."
         # floor at 0.5 -- a clean (low-suspicion) finding shouldn't read as "no confidence"
         confidence = max(float(analysis.get("confidence", 80)) / 100.0, 0.5)
-        llm_flags = analysis.get("red_flags", [])
+        llm_flags = analysis.get("red_flags", [])   # list of {flag, confidence}
 
         return {
             "transaction_findings": {

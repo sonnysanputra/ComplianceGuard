@@ -23,6 +23,7 @@ class CaseState(TypedDict, total=False):
     rule_score: int          # deterministic baseline
     ai_score: int            # Qwen's independent assessment
     risk_level: str          # LOW | MEDIUM | HIGH | CRITICAL (from Qwen)
+    key_drivers: list        # top risk drivers (from Qwen)
     risk_explanation: str
     recommendation: str
     sar_draft: str

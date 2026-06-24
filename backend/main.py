@@ -55,14 +55,18 @@ def main():
     print("-" * 70)
     print(f"  Triage     : {tri.get('alert_type')} | {tri.get('severity')} severity | priority {tri.get('priority')}")
     print(f"  Typology   : {snap.get('transaction_findings', {}).get('typology')}")
-    print(f"  KYC        : {len(kyc.get('checks_failed', []))} checks failed "
-          f"{kyc.get('checks_failed', [])}{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
+    print(f"  KYC        : {kyc.get('consistency', '?')} | {len(kyc.get('checks_failed', []))} checks failed"
+          f"{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
+    if kyc.get("key_concern") and kyc.get("key_concern") != "none":
+        print(f"               key concern: {kyc.get('key_concern')}")
     print(f"  Watchlist  : {wl.get('verdict')} "
           f"(best {wl.get('match_score')}% on {wl.get('list_type')})")
 
     print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
     print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")
+    if snap.get("key_drivers"):
+        print(f"Key drivers: {', '.join(str(d) for d in snap.get('key_drivers', []))}")
     print(f"Recommend  : {snap.get('recommendation')}")
     print(f"\nRisk Explanation (Qwen):\n{snap.get('risk_explanation')}")
 

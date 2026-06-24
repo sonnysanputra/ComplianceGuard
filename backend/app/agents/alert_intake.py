@@ -12,9 +12,20 @@ Deterministic classification keeps triage fast and reliable; Qwen adds the
 human-readable justification and a confidence score.
 """
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.tools.db import HIGH_RISK_COUNTRIES
+
+SYSTEM_PROMPT = """You are an AML intake officer triaging an incoming suspicious-activity \
+alert before investigation.
+
+YOUR JOB
+Confirm the triage (alert type, severity, priority) and justify the priority briefly,
+using ONLY the facts provided. Do not invent details. Priorities mean:
+- P1: act now (very large amount, or transfer to a high-risk jurisdiction)
+- P2: high (large amount)
+- P3: medium  - P4: routine
+"""
 
 
 class AlertIntakeAgent(BaseAgent):
@@ -57,12 +68,19 @@ class AlertIntakeAgent(BaseAgent):
 
         # short Qwen triage confirmation (reasoning + confidence)
         assessment = self.think(
-            system=("You are an AML intake officer. Confirm the triage of this alert "
-                    "using only the facts. Be brief and do not invent details."),
-            prompt=(f"Alert: type={alert_type}, severity={severity}, priority={priority}, "
-                    f"amount=RM{amount}, jurisdiction={recipient_country}, "
-                    f"overseas_high_risk={overseas}.\n"
-                    'Return JSON: {"confidence": <0-100>, "reasoning": "<1-2 sentences>"}'),
+            system=SYSTEM_PROMPT,
+            prompt=(
+                "ALERT TRIAGE\n"
+                f"- type             : {alert_type}\n"
+                f"- severity         : {severity}\n"
+                f"- priority         : {priority}\n"
+                f"- amount           : RM{amount}\n"
+                f"- jurisdiction     : {recipient_country}\n"
+                f"- overseas_high_risk: {overseas}\n\n"
+                "Return ONLY this JSON:\n"
+                '{ "confidence": <0-100>, "reasoning": "<1-2 sentence priority justification>" }\n\n'
+                f"{CONFIDENCE_RUBRIC}"
+            ),
         )
         reasoning = assessment.get("reasoning") or (
             f"Classified as {alert_type}; severity {severity}; priority {priority}.")

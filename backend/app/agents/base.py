@@ -10,6 +10,14 @@ from app.core.state import stamp
 
 _JSON_SUFFIX = "\n\nRespond with ONLY a valid JSON object. No markdown, no extra text."
 
+# Shared confidence rubric -- included in agent prompts so scores are calibrated
+# the same way everywhere (instead of the model guessing what a score means).
+CONFIDENCE_RUBRIC = (
+    "Confidence rubric (0-100): 90-100 = directly supported by the stated facts; "
+    "70-89 = strong inference; 40-69 = weak or partial signal; "
+    "below 40 = uncertain guess."
+)
+
 
 # Injected before an agent's own system prompt when it uses self.reason().
 _COT_PREFIX = """Reason step by step, then give a confidence score.

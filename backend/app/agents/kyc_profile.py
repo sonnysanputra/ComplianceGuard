@@ -12,12 +12,28 @@ Qwen then judges overall consistency and whether Enhanced Due Diligence (EDD)
 is warranted. Deterministic checks stay reliable; the LLM adds the judgment.
 """
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.tools.db import get_customer
 
 # Occupations whose declared income rarely supports large transfers
 LOW_INCOME_OCCUPATIONS = {"student", "unemployed", "junior clerk", "intern", "retiree"}
+
+SYSTEM_PROMPT = """You are a KYC (Know Your Customer) analyst at a bank.
+
+YOUR JOB
+Judge whether the customer's declared profile is CONSISTENT with the flagged
+activity, reasoning only from the facts and the failed deterministic checks given.
+
+WHAT INCONSISTENCY LOOKS LIKE
+- transaction volume far exceeding declared income
+- occupation that cannot plausibly support the amounts (e.g. student, unemployed)
+- a brand-new account already moving large sums
+- an already-elevated risk category, or prior alert history
+
+Enhanced Due Diligence (EDD) is warranted when the profile clearly cannot explain
+the activity. Identify the single most significant concern.
+"""
 
 
 class KYCProfileAgent(BaseAgent):
@@ -57,21 +73,33 @@ class KYCProfileAgent(BaseAgent):
 
         # --- Qwen judges overall consistency + EDD ---
         assessment = self.think(
-            system=("You are a KYC analyst. Judge whether the customer's profile is "
-                    "consistent with the flagged activity, using only the facts given."),
-            prompt=(f"Profile: occupation={cust.get('occupation')}, "
-                    f"declared_income=RM{income}/mo, account_age={age}mo, "
-                    f"risk_category={cust.get('risk_category')}, "
-                    f"prior_alerts={cust.get('previous_alerts')}.\n"
-                    f"Flagged activity total: RM{burst} (={income_ratio}x monthly income).\n"
-                    f"Failed consistency checks: {failed}.\n"
-                    'Return JSON: {"consistent": true/false, "edd_recommended": true/false, '
-                    '"confidence": <0-100>, "reasoning": "<2-3 sentences>"}'),
+            system=SYSTEM_PROMPT,
+            prompt=(
+                "CUSTOMER PROFILE\n"
+                f"- occupation      : {cust.get('occupation')}\n"
+                f"- declared_income : RM{income}/month\n"
+                f"- account_age     : {age} months\n"
+                f"- risk_category   : {cust.get('risk_category')}\n"
+                f"- prior_alerts    : {cust.get('previous_alerts')}\n\n"
+                f"FLAGGED ACTIVITY  : RM{burst} total ({income_ratio}x monthly income)\n"
+                f"FAILED CHECKS     : {failed}\n\n"
+                "Return ONLY this JSON:\n"
+                "{\n"
+                '  "consistency": "<consistent | partially_consistent | inconsistent>",\n'
+                '  "key_concern": "<the single most significant inconsistency, or \'none\'>",\n'
+                '  "edd_recommended": <true|false>,\n'
+                '  "confidence": <0-100>,\n'
+                '  "reasoning": "<2-3 sentences>"\n'
+                "}\n\n"
+                f"{CONFIDENCE_RUBRIC}"
+            ),
         )
         reasoning = assessment.get("reasoning") or (
             f"{len(failed)} of {len(checks)} consistency checks failed.")
         confidence = float(assessment.get("confidence", 85)) / 100.0
         edd_required = edd_required or bool(assessment.get("edd_recommended"))
+        consistency = assessment.get("consistency", "inconsistent" if failed else "consistent")
+        key_concern = assessment.get("key_concern", failed[0] if failed else "none")
 
         return {
             "kyc_findings": {
@@ -84,6 +112,8 @@ class KYCProfileAgent(BaseAgent):
                 "previous_alerts": cust.get("previous_alerts", 0),
                 "checks": checks,
                 "checks_failed": failed,
+                "consistency": consistency,
+                "key_concern": key_concern,
                 "income_mismatch": checks["income_mismatch"],   # kept for risk scoring
                 "edd_required": edd_required,
             },

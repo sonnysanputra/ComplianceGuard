@@ -7,8 +7,25 @@ level + reasoning. The final score BLENDS both -- so the LLM genuinely drives
 the judgment, while the rule score keeps it grounded and explainable.
 """
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
+
+SYSTEM_PROMPT = """You are an AML risk officer making an independent risk assessment \
+of a flagged case.
+
+YOUR JOB
+Assess the money-laundering risk from the investigation findings and the cited
+policy. You are a SECOND OPINION alongside a deterministic rule-based score -- agree
+or disagree with it on the merits, reasoning only from the findings given.
+
+SCORING GUIDE (0-100)
+- 80-100 CRITICAL : multiple strong indicators (e.g. confirmed typology + watchlist hit + profile mismatch)
+- 60-79  HIGH     : a clear typology or serious profile inconsistency
+- 35-59  MEDIUM   : some concern but weak or partial evidence
+- 0-34   LOW       : activity is explainable / likely a false positive
+
+Identify the top 2-3 risk drivers. Do not invent findings that were not provided.
+"""
 
 
 class RiskScoringAgent(BaseAgent):
@@ -37,18 +54,30 @@ class RiskScoringAgent(BaseAgent):
 
         # ---- 2. Qwen's independent AI risk assessment ----
         assessment = self.think(
-            system=("You are an AML risk officer. Assess money-laundering risk from "
-                    "the investigation findings and the relevant policy. Be objective."),
-            prompt=(f"Typology: {typology}\n"
-                    f"Transaction flags: {tf}\n"
-                    f"KYC: income mismatch={kf['income_mismatch']}, "
-                    f"prior alerts={kf['previous_alerts']}\n"
-                    f"Watchlist: match={wf['is_match']}, high-risk country={wf['high_risk_country']}\n"
-                    f"Relevant policy: {policies[0] if policies else 'none'}\n"
-                    f"Rule-based baseline score: {rule_score}/100\n\n"
-                    'Return JSON: {"ai_score": <0-100>, "risk_level": '
-                    '"LOW|MEDIUM|HIGH|CRITICAL", "confidence": <0-100>, '
-                    '"reasoning": "<3 sentence explanation>"}'),
+            system=SYSTEM_PROMPT,
+            prompt=(
+                "INVESTIGATION FINDINGS\n"
+                f"- detected typology     : {typology}\n"
+                f"- transaction flags     : {tf}\n"
+                f"- KYC consistency       : {kf.get('consistency', 'n/a')}; "
+                f"key concern: {kf.get('key_concern', 'n/a')}; "
+                f"EDD: {kf.get('edd_required')}\n"
+                f"- income mismatch       : {kf['income_mismatch']}\n"
+                f"- prior alerts          : {kf['previous_alerts']}\n"
+                f"- watchlist             : match={wf['is_match']}, verdict={wf.get('verdict')}\n"
+                f"- high-risk country     : {wf['high_risk_country']}\n"
+                f"- relevant policy       : {policies[0] if policies else 'none'}\n\n"
+                f"RULE-BASED BASELINE SCORE: {rule_score}/100\n\n"
+                "Return ONLY this JSON:\n"
+                "{\n"
+                '  "ai_score": <0-100>,\n'
+                '  "risk_level": "<LOW|MEDIUM|HIGH|CRITICAL>",\n'
+                '  "key_drivers": ["<top driver>", "<next driver>"],\n'
+                '  "confidence": <0-100>,\n'
+                '  "reasoning": "<3 sentence explanation>"\n'
+                "}\n\n"
+                f"{CONFIDENCE_RUBRIC}"
+            ),
         )
 
         # ---- 3. Blend: AI drives the judgment, rules anchor it ----
@@ -57,6 +86,7 @@ class RiskScoringAgent(BaseAgent):
         risk_level = self._level(final_score)   # derived from the score, always consistent
         explanation = assessment.get("reasoning") or (
             f"Combined rule ({rule_score}) and AI ({ai_score}) assessment.")
+        key_drivers = assessment.get("key_drivers", [])
         confidence = float(assessment.get("confidence", 85)) / 100.0
 
         rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= 60
@@ -67,6 +97,7 @@ class RiskScoringAgent(BaseAgent):
             "rule_score": rule_score,
             "ai_score": ai_score,
             "risk_level": risk_level,
+            "key_drivers": key_drivers,
             "recommendation": rec,
             "risk_explanation": explanation,
             "cot_traces": [self.trace(explanation, confidence,

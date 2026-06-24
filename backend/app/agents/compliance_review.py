@@ -9,8 +9,22 @@ Quality-control gate that goes beyond a section checklist:
   - decides whether the draft is ready for human review or needs revision
 """
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
+
+SYSTEM_PROMPT = """You are a compliance QA reviewer checking a draft Suspicious Activity \
+Report (SAR) before it reaches a human analyst.
+
+YOUR JOB
+Verify the draft makes ONLY claims that are supported by the investigation findings
+(the ground truth). Flag any statement that is unsupported or invented -- for example:
+- calling a country high-risk when it is not in the findings
+- citing a typology that was not detected
+- stating a watchlist hit when none was found
+- asserting an amount or fact not present in the findings
+
+Then score the draft's quality (clarity, completeness, accuracy) from 0-100.
+"""
 
 
 class ComplianceReviewAgent(BaseAgent):
@@ -41,15 +55,20 @@ class ComplianceReviewAgent(BaseAgent):
 
         # --- Qwen validates the draft only makes supported claims ---
         review = self.think(
-            system=("You are a compliance QA reviewer. Verify the SAR draft only makes "
-                    "claims that are supported by the findings. Flag any unsupported or "
-                    "invented statements (e.g. calling a country high-risk when it isn't, "
-                    "or citing a typology that wasn't detected). Score quality 0-100."),
-            prompt=(f"Findings (ground truth): {findings}\n\n"
-                    f"SAR draft:\n{draft[:1600]}\n\n"
-                    'Return JSON: {"claims_supported": true/false, '
-                    '"unsupported_claims": ["..."], "quality_score": <0-100>, '
-                    '"confidence": <0-100>, "reasoning": "<2-3 sentences>"}'),
+            system=SYSTEM_PROMPT,
+            prompt=(
+                f"FINDINGS (ground truth):\n{findings}\n\n"
+                f"SAR DRAFT:\n{draft[:1600]}\n\n"
+                "Return ONLY this JSON:\n"
+                "{\n"
+                '  "claims_supported": <true|false>,\n'
+                '  "unsupported_claims": ["<any invented/unsupported statement>"],\n'
+                '  "quality_score": <0-100>,\n'
+                '  "confidence": <0-100>,\n'
+                '  "reasoning": "<2-3 sentences>"\n'
+                "}\n\n"
+                f"{CONFIDENCE_RUBRIC}"
+            ),
         )
         quality = int(review.get("quality_score", 80))
         unsupported = review.get("unsupported_claims", []) or []
