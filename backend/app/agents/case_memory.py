@@ -1,5 +1,5 @@
 """
-4.x Long-term Memory Agent
+4.10 Long-term Memory Agent
 
 Looks up the customer's HISTORY across past investigations (persisted in Supabase)
 plus their KYC alert record, giving the current case context it can't see on its
