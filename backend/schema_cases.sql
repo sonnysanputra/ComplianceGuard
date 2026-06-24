@@ -55,6 +55,7 @@ create table if not exists risk_assessments (
     final_score integer,
     risk_level  text,
     key_drivers jsonb,
+    factors     jsonb,            -- explainable breakdown: factor + points + evidence
     explanation text,
     created_at  timestamptz default now()
 );

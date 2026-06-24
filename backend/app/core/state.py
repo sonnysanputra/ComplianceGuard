@@ -25,6 +25,7 @@ class CaseState(TypedDict, total=False):
     ai_score: int            # Qwen's independent assessment
     risk_level: str          # LOW | MEDIUM | HIGH | CRITICAL (from Qwen)
     key_drivers: list        # top risk drivers (from Qwen)
+    risk_factors: list       # explainable breakdown: factor + points + evidence
     risk_explanation: str
     recommendation: str
     sar_draft: str

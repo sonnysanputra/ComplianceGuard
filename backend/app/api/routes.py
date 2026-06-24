@@ -85,6 +85,8 @@ def _snapshot(case_id: str) -> dict:
         "rule_score": v.get("rule_score"),
         "ai_score": v.get("ai_score"),
         "risk_level": v.get("risk_level"),
+        "risk_factors": v.get("risk_factors"),
+        "key_drivers": v.get("key_drivers"),
         "recommendation": v.get("recommendation"),
         "risk_explanation": v.get("risk_explanation"),
         "sar_draft": v.get("sar_draft"),

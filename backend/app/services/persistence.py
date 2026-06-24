@@ -87,6 +87,7 @@ def persist_case(state: dict, status: str) -> bool:
                 "final_score": state.get("risk_score"),
                 "risk_level":  state.get("risk_level"),
                 "key_drivers": state.get("key_drivers") or [],
+                "factors":     state.get("risk_factors") or [],
                 "explanation": state.get("risk_explanation"),
             }).execute()
 

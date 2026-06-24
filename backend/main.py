@@ -64,13 +64,28 @@ def main():
     print(f"  Watchlist  : {wl.get('verdict')} "
           f"(best {wl.get('match_score')}% on {wl.get('list_type')})")
     print(f"  Memory     : {mem.get('memory_risk_signal')} [{mem.get('memory_risk_direction')}]")
+    pols = snap.get("retrieved_policies", [])
+    if pols:
+        cites = " | ".join(f"{p['policy_id']} {p['title']} "
+                           f"(retr {p['retrieval_score']:.0%}, rerank {p['rerank_score']:.0%})"
+                           for p in pols)
+        print(f"  Policies   : {cites}")
 
     print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
     print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")
-    if snap.get("key_drivers"):
-        print(f"Key drivers: {', '.join(str(d) for d in snap.get('key_drivers', []))}")
-    print(f"Recommend  : {snap.get('recommendation')}")
+
+    factors = snap.get("risk_factors", [])
+    if factors:
+        print("\nRisk Factor Breakdown:")
+        for f in factors:
+            sign = "+" if f["points"] >= 0 else ""
+            print(f"   {sign}{f['points']:>3}  {f['factor']:<28} — {f['evidence']}")
+        raw = sum(f["points"] for f in factors)
+        if raw != snap.get("rule_score"):
+            print(f"   ───  raw total {raw}, capped to {snap.get('rule_score')}/100")
+
+    print(f"\nRecommend  : {snap.get('recommendation')}")
     print(f"\nRisk Explanation (Qwen):\n{snap.get('risk_explanation')}")
 
     if snap.get("sar_draft"):

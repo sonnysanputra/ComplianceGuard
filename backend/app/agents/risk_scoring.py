@@ -33,29 +33,63 @@ class RiskScoringAgent(BaseAgent):
     label = "Risk Scoring Agent"
 
     def run(self, state: dict) -> dict:
-        tf = state["transaction_findings"]["flags"]
-        typology = state["transaction_findings"].get("typology", "unknown")
+        tfind = state["transaction_findings"]
+        tf = tfind["flags"]
+        typology = tfind.get("typology", "unknown")
         kf = state["kyc_findings"]
         wf = state["watchlist_findings"]
         mem = state.get("memory_findings", {})
         policies = state.get("retrieved_policies", [])
+        alert = state["alert"]
 
-        # ---- 1. Deterministic baseline (transparent, auditable anchor) ----
-        rule_score = 0
-        if tf.get("money_mule"):             rule_score += 30
-        if tf.get("structuring"):            rule_score += 25
-        if tf.get("rapid_dispersion"):       rule_score += 25
-        if tf.get("new_overseas_recipient"): rule_score += 15
-        if tf.get("volume_spike"):           rule_score += 15
-        if kf["income_mismatch"]:            rule_score += 20
-        if wf["is_match"]:                   rule_score += 25
-        if wf["high_risk_country"]:          rule_score += 10
-        if kf["previous_alerts"] > 0:        rule_score += 10
+        # ---- 1. Deterministic baseline + an explainable FACTOR BREAKDOWN ----
+        # Each triggered factor records its points and the evidence behind it,
+        # so the score is fully justifiable (a compliance requirement).
+        factors = []
 
-        # long-term memory adjustments (repeat offender raises, benign history lowers)
-        if mem.get("previous_escalations", 0) > 0:       rule_score += 15
-        if mem.get("same_recipient_seen_before"):        rule_score += 10
-        if mem.get("memory_risk_direction") == "reduce": rule_score -= 10
+        def add(triggered, factor, points, evidence):
+            if triggered:
+                factors.append({"factor": factor, "points": points, "evidence": evidence})
+
+        total_recent = tfind.get("total_recent")
+        window = tfind.get("window_hours")
+        distinct = tfind.get("distinct_recipients")
+        country = alert.get("country")
+
+        add(tf.get("money_mule"), "Money mule pattern", 30,
+            f"Inbound funds rapidly forwarded to {distinct} new recipient(s)")
+        add(tf.get("structuring"), "Structuring pattern", 25,
+            f"{alert.get('num_transactions')} transfers below the RM10,000 threshold "
+            f"(RM{total_recent} total)")
+        add(tf.get("rapid_dispersion"), "Layering / dispersion", 25,
+            f"Funds dispersed across {distinct} new recipients within {window}h")
+        add(tf.get("new_overseas_recipient"), "High-risk overseas transfer", 15,
+            f"Transfer to high-risk jurisdiction: {country}")
+        add(tf.get("volume_spike"), "Volume spike", 15,
+            f"Burst of RM{total_recent} far exceeds the customer's baseline")
+        add(kf.get("income_mismatch"), "Income mismatch", 20,
+            f"RM{kf.get('burst_total')} burst vs RM{kf.get('declared_income')} declared "
+            f"income ({kf.get('income_ratio')}x)")
+        add(wf.get("is_match"), "Watchlist match", 25,
+            f"Match: {wf.get('best_match')} ({wf.get('match_score')}%, {wf.get('list_type')})")
+        add(wf.get("high_risk_country"), "High-risk country", 10,
+            f"Recipient country is {country}")
+        add(kf.get("previous_alerts", 0) > 0, "Prior alert history", 10,
+            f"{kf.get('previous_alerts')} prior alert(s) on the customer's KYC record")
+        add(mem.get("previous_escalations", 0) > 0, "Repeat offender (memory)", 15,
+            f"{mem.get('previous_escalations')} prior escalation(s) for this customer")
+        add(mem.get("same_recipient_seen_before"), "Repeat recipient (memory)", 10,
+            "Same recipient seen in a previous investigation")
+
+        rule_score = sum(f["points"] for f in factors)
+
+        # benign history lowers the score (a negative factor)
+        if mem.get("memory_risk_direction") == "reduce":
+            factors.append({"factor": "Benign history (memory)", "points": -10,
+                            "evidence": f"{mem.get('previous_false_positives')} prior "
+                                        f"false positive(s), no escalations"})
+            rule_score -= 10
+
         rule_score = max(0, min(rule_score, 100))
 
         # ---- 2. Qwen's independent AI risk assessment ----
@@ -73,7 +107,8 @@ class RiskScoringAgent(BaseAgent):
                 f"- watchlist             : match={wf['is_match']}, verdict={wf.get('verdict')}\n"
                 f"- high-risk country     : {wf['high_risk_country']}\n"
                 f"- LONG-TERM MEMORY      : {mem.get('memory_risk_signal', 'no prior history')}\n"
-                f"- relevant policy       : {policies[0] if policies else 'none'}\n\n"
+                f"- relevant policy       : "
+                f"{(policies[0]['policy_id'] + ': ' + policies[0]['content']) if policies else 'none'}\n\n"
                 f"RULE-BASED BASELINE SCORE: {rule_score}/100\n\n"
                 "Return ONLY this JSON:\n"
                 "{\n"
@@ -104,12 +139,14 @@ class RiskScoringAgent(BaseAgent):
             "rule_score": rule_score,
             "ai_score": ai_score,
             "risk_level": risk_level,
+            "risk_factors": factors,        # explainable breakdown: factor + points + evidence
             "key_drivers": key_drivers,
             "recommendation": rec,
             "risk_explanation": explanation,
             "cot_traces": [self.trace(explanation, confidence,
                                       output={"final": final_score, "rule": rule_score,
-                                              "ai": ai_score, "level": risk_level})],
+                                              "ai": ai_score, "level": risk_level,
+                                              "factors": factors})],
             "audit": stamp(f"{self.label} scored {final_score}/100 "
                            f"(rule {rule_score}, AI {ai_score}) -> {risk_level}"),
         }
