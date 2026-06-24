@@ -56,4 +56,14 @@ SCENARIOS = [
         "num_transactions": 3,
         "_expected": "Repeat offender -> long-term memory boosts risk (run & approve case 1 first)",
     },
+    {
+        "id": "AML-2026-006",
+        "customer_id": "CUST-99999",
+        "reason": "Alert raised on a customer with no profile or transaction history on file",
+        "recipient": "Unknown Beneficiary",
+        "country": "Malaysia",
+        "total_amount": 15000,
+        "num_transactions": 1,
+        "_expected": "Incomplete data -> NEEDS_MORE_INFORMATION (gate halts before investigation)",
+    },
 ]

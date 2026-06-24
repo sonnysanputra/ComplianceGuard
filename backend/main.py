@@ -46,6 +46,22 @@ def main():
     # ---- Show the investigation result so far ----
     snap = graph.get_state(config).values
 
+    # ---- Data quality gate: incomplete cases never reach the investigation ----
+    dq = snap.get("data_quality", {})
+    if dq and not dq.get("complete", True):
+        tri = snap.get("triage", {})
+        print("\n" + "=" * 70)
+        print("  ⚠  NEEDS MORE INFORMATION — case cannot be reliably investigated")
+        print("=" * 70)
+        print(f"  Alert      : {alert['id']} ({tri.get('alert_type')})")
+        print(f"  Missing    : {', '.join(dq.get('missing_fields', []))}")
+        print(f"  Action     : {dq.get('recommended_action')}")
+        print("\n  Audit:")
+        for line in sorted(snap.get("audit", [])):
+            print("   ", line)
+        persist_case(snap, status="needs_more_information")
+        return
+
     tri = snap.get("triage", {})
     kyc = snap.get("kyc_findings", {})
     wl = snap.get("watchlist_findings", {})

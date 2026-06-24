@@ -72,8 +72,11 @@ def _snapshot(case_id: str) -> dict:
     if not v:
         raise HTTPException(status_code=404, detail=f"No case '{case_id}'")
 
+    dq = v.get("data_quality", {})
     awaiting = "human_approval" in (state.next or ())
-    if awaiting:
+    if dq and not dq.get("complete", True):
+        status = "needs_more_information"
+    elif awaiting:
         status = "awaiting_decision"
     elif v.get("human_decision"):
         status = "closed"
@@ -84,6 +87,7 @@ def _snapshot(case_id: str) -> dict:
         "case_id": case_id,
         "status": status,
         "triage": v.get("triage"),
+        "data_quality": v.get("data_quality"),
         "transaction_findings": v.get("transaction_findings"),
         "kyc_findings": v.get("kyc_findings"),
         "watchlist_findings": v.get("watchlist_findings"),
