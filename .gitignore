@@ -1,0 +1,10 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Env / secrets
+.env
+
+# ChromaDB local store (regenerated from rag.py on first run)
+chroma_db/

@@ -1,0 +1,8 @@
+langgraph
+openai
+chromadb
+rapidfuzz
+python-dotenv
+supabase
+sentence-transformers
+tenacity
