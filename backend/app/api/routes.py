@@ -76,6 +76,8 @@ def _snapshot(case_id: str) -> dict:
     awaiting = "human_approval" in (state.next or ())
     if dq and not dq.get("complete", True):
         status = "needs_more_information"
+    elif v.get("errors") and not v.get("human_decision"):
+        status = "manual_review_required"
     elif awaiting:
         status = "awaiting_decision"
     elif v.get("human_decision"):
@@ -104,6 +106,7 @@ def _snapshot(case_id: str) -> dict:
         "review": v.get("review"),
         "human_decision": v.get("human_decision"),
         "human_review": v.get("human_review"),
+        "errors": v.get("errors"),
         "audit": sorted(v.get("audit", [])),
         "cot_traces": v.get("cot_traces"),
         "a2a_messages": v.get("a2a_messages"),

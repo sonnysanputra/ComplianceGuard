@@ -39,6 +39,7 @@ class CaseState(TypedDict, total=False):
     audit: Annotated[list, add]         # timestamped human-readable timeline
     cot_traces: Annotated[list, add]    # per-agent reasoning + confidence
     a2a_messages: Annotated[list, add]  # agent-to-agent status + confidence log
+    errors: Annotated[list, add]        # agent failures -> forces manual review
 
 
 def stamp(msg: str) -> list:

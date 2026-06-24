@@ -87,6 +87,12 @@ def main():
                            for p in pols)
         print(f"  Policies   : {cites}")
 
+    errors = snap.get("errors", [])
+    if errors:
+        print("\n⚠  TOOL FAILURE(S) — case forced to manual review:")
+        for e in errors:
+            print(f"     - {e.get('agent')}: {e.get('error')}")
+
     print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
     print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")

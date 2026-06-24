@@ -33,6 +33,25 @@ class RiskScoringAgent(BaseAgent):
     label = "Risk Scoring Agent"
 
     def run(self, state: dict) -> dict:
+        # ---- 0. Error policy: if any investigation tool failed, do NOT score
+        #         blind -- escalate the case for manual human review. ----
+        errors = state.get("errors", [])
+        if errors:
+            failed = sorted({e.get("agent") for e in errors})
+            explanation = (f"Investigation tool(s) failed: {', '.join(failed)}. "
+                           f"Automated scoring is unreliable; manual review required.")
+            return {
+                "risk_score": 0, "rule_score": 0, "ai_score": 0,
+                "risk_level": "MANUAL_REVIEW_REQUIRED",
+                "risk_factors": [], "key_drivers": [],
+                "recommendation": "Escalate for manual review - one or more "
+                                  "investigation tools failed.",
+                "risk_explanation": explanation,
+                "cot_traces": [self.trace(explanation, 0.0, output={"failed": failed})],
+                "audit": stamp(f"{self.label} -> MANUAL_REVIEW_REQUIRED "
+                               f"({', '.join(failed)} failed)"),
+            }
+
         tfind = state["transaction_findings"]
         tf = tfind["flags"]
         typology = tfind.get("typology", "unknown")

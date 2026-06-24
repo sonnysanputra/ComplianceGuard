@@ -15,8 +15,6 @@ Flow (mirrors the proposal's high-level workflow):
                     -> [score <  60] END   (low-risk early exit -- cost saver)
 """
 
-from typing import Literal
-
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -45,9 +43,14 @@ def route_after_data_quality(state: CaseState):
     return INVESTIGATION if dq.get("complete", True) else END
 
 
-# Low-risk cases exit BEFORE the expensive SAR drafting node.
-def route_after_scoring(state: CaseState) -> Literal["sar_drafting", "__end__"]:
-    return "sar_drafting" if state["risk_score"] >= 60 else END
+# Routing after scoring:
+#   tool failure  -> straight to human review (do NOT draft a SAR on bad data)
+#   high risk     -> draft a SAR
+#   low risk      -> end early
+def route_after_scoring(state: CaseState):
+    if state.get("errors"):
+        return "human_approval"
+    return "sar_drafting" if state.get("risk_score", 0) >= 60 else END
 
 
 # After the human acts: 'request_more_info' re-runs the investigation (bounded),
@@ -86,7 +89,8 @@ def build_graph():
     for node in INVESTIGATION:
         g.add_edge(node, "risk_scoring")
 
-    g.add_conditional_edges("risk_scoring", route_after_scoring)
+    g.add_conditional_edges("risk_scoring", route_after_scoring,
+                            ["sar_drafting", "human_approval", END])
     g.add_edge("sar_drafting", "compliance_review")
     g.add_edge("compliance_review", "human_approval")
     # human decision: request_more_info loops back to investigate; else END

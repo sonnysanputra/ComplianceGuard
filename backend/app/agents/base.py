@@ -52,6 +52,7 @@ class BaseAgent(ABC):
                 "cot_traces": [self.trace(f"Agent failed: {exc}", 0.0)],
                 "a2a_messages": [{"from": self.name, "status": "error",
                                   "error": str(exc), "duration_ms": duration}],
+                "errors": [{"agent": self.name, "error": str(exc)}],   # forces manual review
                 "audit": stamp(f"{self.label} ERROR: {exc}"),
             }
 
