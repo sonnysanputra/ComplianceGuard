@@ -7,7 +7,7 @@ BaseAgent wrapper's try/except + retry would interfere with that pause.
 """
 
 from langgraph.types import interrupt
-from ..state import stamp
+from app.core.state import stamp
 
 
 def human_approval(state: dict) -> dict:

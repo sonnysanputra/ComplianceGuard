@@ -5,9 +5,9 @@ Retrieves the most relevant internal AML policies using two-stage RAG
 (vector recall -> cross-encoder rerank). No LLM here -- retrieval only.
 """
 
-from .base import BaseAgent
-from ..state import stamp
-from ..tools.rag import search_policies
+from app.agents.base import BaseAgent
+from app.core.state import stamp
+from app.tools.rag import search_policies
 
 
 class PolicyRAGAgent(BaseAgent):

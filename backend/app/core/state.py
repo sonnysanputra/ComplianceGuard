@@ -14,11 +14,15 @@ from typing import TypedDict, Annotated
 class CaseState(TypedDict, total=False):
     alert: dict
     case_summary: str
+    triage: dict             # alert type, severity, priority, entities, routing
     transaction_findings: dict
     kyc_findings: dict
     watchlist_findings: dict
     retrieved_policies: list
-    risk_score: int
+    risk_score: int          # final blended score (rules + AI)
+    rule_score: int          # deterministic baseline
+    ai_score: int            # Qwen's independent assessment
+    risk_level: str          # LOW | MEDIUM | HIGH | CRITICAL (from Qwen)
     risk_explanation: str
     recommendation: str
     sar_draft: str

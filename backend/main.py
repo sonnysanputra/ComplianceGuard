@@ -7,12 +7,11 @@ The graph runs all agents, PAUSES at human approval (human-in-the-loop),
 prints the SAR draft for review, then we 'approve' and it finishes.
 """
 
-from dotenv import load_dotenv
-load_dotenv()  # must run BEFORE importing the orchestrator (which reads env vars)
+import app.core.config  # noqa: F401 -- importing this loads .env before anything else
 
 from langgraph.types import Command
-from src.orchestrator import build_graph
-from src.scenarios import SCENARIOS
+from app.orchestrator import build_graph
+from app.data.scenarios import SCENARIOS
 
 
 def pick_scenario() -> dict:
@@ -45,15 +44,42 @@ def main():
 
     # ---- Show the investigation result so far ----
     snap = graph.get_state(config).values
-    print(f"\nRisk Score : {snap.get('risk_score')}/100")
+
+    tri = snap.get("triage", {})
+    kyc = snap.get("kyc_findings", {})
+    wl = snap.get("watchlist_findings", {})
+    rev = snap.get("review", {})
+
+    print("\n" + "-" * 70)
+    print("CASE TRIAGE & KEY FINDINGS:")
+    print("-" * 70)
+    print(f"  Triage     : {tri.get('alert_type')} | {tri.get('severity')} severity | priority {tri.get('priority')}")
+    print(f"  Typology   : {snap.get('transaction_findings', {}).get('typology')}")
+    print(f"  KYC        : {len(kyc.get('checks_failed', []))} checks failed "
+          f"{kyc.get('checks_failed', [])}{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
+    print(f"  Watchlist  : {wl.get('verdict')} "
+          f"(best {wl.get('match_score')}% on {wl.get('list_type')})")
+
+    print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
+    print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
+    print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")
     print(f"Recommend  : {snap.get('recommendation')}")
-    print(f"\nRisk Explanation:\n{snap.get('risk_explanation')}")
+    print(f"\nRisk Explanation (Qwen):\n{snap.get('risk_explanation')}")
 
     if snap.get("sar_draft"):
         print("\n" + "-" * 70)
         print("SAR DRAFT (for human review):")
         print("-" * 70)
         print(snap["sar_draft"])
+
+        print("\n" + "-" * 70)
+        print("COMPLIANCE REVIEW:")
+        print("-" * 70)
+        print(f"  Status        : {rev.get('status')}")
+        print(f"  Completeness  : {rev.get('completeness_score')}  |  Quality: {rev.get('quality_score')}/100")
+        print(f"  Claims backed : {rev.get('claims_supported')}")
+        if rev.get("unsupported_claims"):
+            print(f"  Flagged       : {rev.get('unsupported_claims')}")
 
     # ---- Per-agent confidence (from the A2A message log) ----
     print("\n" + "-" * 70)

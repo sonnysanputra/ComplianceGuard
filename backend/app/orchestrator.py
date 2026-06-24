@@ -19,16 +19,16 @@ from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from .state import CaseState
-from .agents.alert_intake import alert_intake
-from .agents.transaction_analysis import transaction_analysis
-from .agents.kyc_profile import kyc_profile
-from .agents.watchlist_screening import watchlist_screening
-from .agents.policy_rag import policy_rag
-from .agents.risk_scoring import risk_scoring
-from .agents.sar_drafting import sar_drafting
-from .agents.compliance_review import compliance_review
-from .agents.human_approval import human_approval
+from app.core.state import CaseState
+from app.agents.alert_intake import alert_intake
+from app.agents.transaction_analysis import transaction_analysis
+from app.agents.kyc_profile import kyc_profile
+from app.agents.watchlist_screening import watchlist_screening
+from app.agents.policy_rag import policy_rag
+from app.agents.risk_scoring import risk_scoring
+from app.agents.sar_drafting import sar_drafting
+from app.agents.compliance_review import compliance_review
+from app.agents.human_approval import human_approval
 
 
 # Low-risk cases exit BEFORE the expensive SAR drafting node.

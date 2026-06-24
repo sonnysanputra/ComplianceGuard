@@ -6,3 +6,5 @@ python-dotenv
 supabase
 sentence-transformers
 tenacity
+fastapi
+uvicorn[standard]

@@ -13,7 +13,8 @@ embedder (Ollama) and the reranker run locally, so retrieval costs nothing.
 
 import chromadb
 from sentence_transformers import CrossEncoder
-from ..services import embed
+from app.services.llm import embed
+from app.core.config import CHROMA_PATH
 
 # Internal AML policy documents. In a real system these come from PDFs/Word
 # docs run through a loader; here we hardcode a few representative sections.
@@ -54,7 +55,7 @@ def get_policy_collection():
     if _collection is not None:
         return _collection
 
-    chroma = chromadb.PersistentClient(path="./chroma_db")
+    chroma = chromadb.PersistentClient(path=CHROMA_PATH)
     coll = chroma.get_or_create_collection("aml_policies")
 
     # Rebuild if empty OR if the policy list changed (keeps the vector store

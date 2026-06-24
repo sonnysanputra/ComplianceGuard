@@ -1,11 +1,14 @@
 import time
 import re
+import json
 from abc import ABC, abstractmethod
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ..services import chat
-from ..state import stamp
+from app.services.llm import chat
+from app.core.state import stamp
+
+_JSON_SUFFIX = "\n\nRespond with ONLY a valid JSON object. No markdown, no extra text."
 
 
 # Injected before an agent's own system prompt when it uses self.reason().
@@ -74,6 +77,27 @@ class BaseAgent(ABC):
         """Single chain-of-thought call. Returns (reasoning_text, confidence 0..1)."""
         raw = chat(prompt, system=_COT_PREFIX + (system or ""))
         return self._parse_cot(raw)
+
+    def think(self, system: str, prompt: str) -> dict:
+        """LLM call that returns a parsed JSON object (the model's reasoning +
+        structured fields). Returns {} on parse failure so callers can fall back
+        to deterministic logic. This is how Qwen does real detection/judgment."""
+        raw = chat(prompt, system=(system or "") + _JSON_SUFFIX)
+        return self._parse_json(raw)
+
+    @staticmethod
+    def _parse_json(raw: str) -> dict:
+        """Extract a JSON object from a model response, tolerating code fences."""
+        raw = raw.strip()
+        raw = re.sub(r"^```(?:json)?", "", raw).strip()
+        raw = re.sub(r"```$", "", raw).strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)   # grab the JSON body
+        if match:
+            raw = match.group(0)
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return {}
 
     def trace(self, reasoning: str, confidence: float, output: dict | None = None) -> dict:
         """Build a CoT trace entry for the cot_traces accumulator."""

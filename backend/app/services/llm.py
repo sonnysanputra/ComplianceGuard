@@ -1,10 +1,6 @@
-import os
 from openai import OpenAI
 
-# ---- Config (override via environment / .env if you like) ----
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+from app.core.config import OLLAMA_BASE_URL, CHAT_MODEL, EMBED_MODEL
 
 _client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
 
