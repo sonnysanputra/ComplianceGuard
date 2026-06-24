@@ -21,10 +21,11 @@ pause/resume works across separate HTTP requests within the running server.
 
 import app.core.config  # noqa: F401 -- loads .env first
 
+import json
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.types import Command
@@ -49,6 +50,21 @@ AGENTS = {a.name: a for a in [
     alert_intake, data_quality, transaction_analysis, kyc_profile,
     watchlist_screening, policy_rag, case_memory, risk_scoring,
 ]}
+
+# human-readable labels for streamed progress events
+LABELS = {
+    "alert_intake": "Alert Intake Agent",
+    "data_quality": "Data Quality Gate",
+    "transaction_analysis": "Transaction Analysis Agent",
+    "kyc_profile": "KYC Profile Agent",
+    "watchlist_screening": "Watchlist Screening Agent",
+    "policy_rag": "Policy RAG Agent",
+    "case_memory": "Memory Agent",
+    "risk_scoring": "Risk Scoring Agent",
+    "sar_drafting": "SAR Drafting Agent",
+    "compliance_review": "Compliance Review Agent",
+    "human_approval": "Human Approval",
+}
 
 app = FastAPI(title="CompliGuard AI", version="1.0",
               description="Multi-agent AML compliance investigation API")
@@ -233,10 +249,60 @@ def investigate(alert: Alert):
     return snap
 
 
+@app.post("/investigate/stream")
+def investigate_stream(alert: Alert):
+    """Run the investigation and STREAM agent progress as Server-Sent Events.
+    Each agent emits a 'progress' event as it completes; a final 'done' event
+    carries the status. Consume with fetch()+ReadableStream on the frontend.
+
+    Event stream:
+        event: progress   data: {agent, label, status, confidence, message}
+        ...
+        event: done        data: {case_id, status, risk_score, risk_level}
+    """
+    case_id = alert.id
+    cfg = {"configurable": {"thread_id": case_id}}
+
+    def gen():
+        try:
+            for chunk in graph.stream({"alert": alert.model_dump()}, cfg,
+                                      stream_mode="updates"):
+                for node, updates in chunk.items():
+                    if node == "__interrupt__" or not isinstance(updates, dict):
+                        continue
+                    conf = None
+                    if updates.get("cot_traces"):
+                        conf = updates["cot_traces"][-1].get("confidence")
+                    msg = updates["audit"][-1] if updates.get("audit") else ""
+                    ev = {"agent": node, "label": LABELS.get(node, node),
+                          "status": "completed", "confidence": conf, "message": msg}
+                    yield f"event: progress\ndata: {json.dumps(ev)}\n\n"
+
+            # investigation finished (paused for human, or ended)
+            snap = _snapshot(case_id)
+            persist_case(graph.get_state(cfg).values, status=snap["status"])
+            done = {"case_id": case_id, "status": snap["status"],
+                    "risk_score": snap.get("risk_score"),
+                    "risk_level": snap.get("risk_level")}
+            yield f"event: done\ndata: {json.dumps(done)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
 @app.get("/cases", response_model=list[CaseSummary])
 def cases(limit: int = 50):
     """List investigated cases (survives server restarts)."""
     return list_cases(limit)
+
+
+@app.get("/case/{case_id}/status")
+def case_status(case_id: str):
+    """Lightweight status poll (for clients not using the SSE stream)."""
+    snap = _snapshot(case_id)
+    return {"case_id": case_id, "status": snap["status"],
+            "risk_score": snap.get("risk_score"), "risk_level": snap.get("risk_level")}
 
 
 @app.get("/case/{case_id}", response_model=CaseSnapshot)
