@@ -167,3 +167,14 @@ def get_case_events(case_id: str) -> list[dict]:
     except Exception as exc:
         logger.warning(f"[persistence] could not get events: {exc}")
         return []
+
+
+def get_case_sar(case_id: str) -> str | None:
+    """Return the latest persisted SAR draft for a case (if any)."""
+    try:
+        res = (client().table("sar_drafts").select("draft_text")
+               .eq("case_id", case_id).order("id", desc=True).limit(1).execute())
+        return res.data[0]["draft_text"] if res.data else None
+    except Exception as exc:
+        logger.warning(f"[persistence] could not get SAR: {exc}")
+        return None
