@@ -18,16 +18,18 @@ class PolicyRAGAgent(BaseAgent):
         query = state["alert"]["reason"]
         policies = search_policies(query, k=5, n=2)        # recall 5, rerank to 2
 
+        cites = ", ".join(f"{p['policy_id']} ({p['rerank_score']:.0%})" for p in policies)
         reasoning = (
-            f"Searched policy base for '{query}'. Retrieved and reranked the top "
-            f"{len(policies)} relevant policies to ground the assessment."
+            f"Searched the policy base for '{query}'. Retrieved and reranked the top "
+            f"{len(policies)} citations: {cites or 'none'}."
         )
         confidence = 0.9 if policies else 0.3
 
         return {
             "retrieved_policies": policies,
-            "cot_traces": [self.trace(reasoning, confidence, output={"count": len(policies)})],
-            "audit": stamp(f"{self.label} retrieved {len(policies)} relevant policies"),
+            "cot_traces": [self.trace(reasoning, confidence,
+                                      output={"citations": [p["policy_id"] for p in policies]})],
+            "audit": stamp(f"{self.label} retrieved {len(policies)} citations: {cites or 'none'}"),
         }
 
 

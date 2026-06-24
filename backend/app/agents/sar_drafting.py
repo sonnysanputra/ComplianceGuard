@@ -24,6 +24,7 @@ STRUCTURE (use these exact section headings)
 3. Suspicious Indicators   (bullet points, each tied to a specific fact)
 4. Risk Assessment         (state the score, level, and key drivers)
 5. Recommended Action
+6. Policy References       (list each cited policy exactly as "ID: Title (section X)")
 """
 
 
@@ -32,6 +33,12 @@ class SARDraftingAgent(BaseAgent):
     label = "SAR Drafting Agent"
 
     def run(self, state: dict) -> dict:
+        # format the RAG citations for the Policy References section
+        policies = state.get("retrieved_policies", [])
+        refs = "\n".join(
+            f"    - {p['policy_id']}: {p['title']} (section {p['section']})"
+            for p in policies) or "    - none"
+
         draft = self.llm(
             system=SYSTEM_PROMPT,
             prompt=(
@@ -44,7 +51,7 @@ class SARDraftingAgent(BaseAgent):
                 f"- Risk             : {state['risk_score']}/100 ({state.get('risk_level')}); "
                 f"drivers: {state.get('key_drivers')}\n"
                 f"- Risk reasoning   : {state['risk_explanation']}\n"
-                f"- Policy basis     : {state.get('retrieved_policies')}\n\n"
+                f"- Cited policies (use these exactly in Policy References):\n{refs}\n\n"
                 "Write the SAR draft now."
             ),
         )

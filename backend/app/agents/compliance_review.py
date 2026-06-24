@@ -50,7 +50,7 @@ class ComplianceReviewAgent(BaseAgent):
             "watchlist_verdict": state["watchlist_findings"].get("verdict"),
             "kyc_checks_failed": state["kyc_findings"].get("checks_failed"),
             "edd_required": state["kyc_findings"].get("edd_required"),
-            "policies": state.get("retrieved_policies", []),
+            "cited_policies": [p.get("policy_id") for p in state.get("retrieved_policies", [])],
         }
 
         # --- Qwen validates the draft only makes supported claims ---
