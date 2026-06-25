@@ -47,3 +47,16 @@ def get_watchlist() -> list[dict]:
     """Active watchlist entities across all lists (sanctions, PEP, blacklist, etc.)."""
     res = _db().table("watchlist_entities").select("*").eq("is_active", True).execute()
     return res.data
+
+
+def get_transaction_edges() -> list[dict]:
+    """Money-flow edges for relationship-graph analysis. Best-effort: returns []
+    if the table is absent/unreachable (the graph agent then derives edges from
+    the customer's own transactions)."""
+    try:
+        res = _db().table("transaction_edges").select("*").execute()
+        return [{"from": e.get("from_account"), "to": e.get("to_account"),
+                 "amount": e.get("amount"), "time": e.get("transaction_time")}
+                for e in (res.data or [])]
+    except Exception:
+        return []

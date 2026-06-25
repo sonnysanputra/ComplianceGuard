@@ -173,3 +173,33 @@ create table if not exists case_status_history (
     reason     text,
     created_at timestamptz default now()
 );
+
+-- ====================================================================
+-- Money-flow edges for relationship-graph analysis (layering / mule
+-- detection). Each row is a directed transfer between two accounts.
+-- ====================================================================
+create table if not exists transaction_edges (
+    id               bigserial primary key,
+    from_account     text,
+    to_account       text,
+    amount           numeric,
+    transaction_time timestamptz,
+    case_id          text
+);
+
+-- Demo layering/dispersion network for CUST-40233: fan-out to 8 recipients,
+-- with two of them forwarding onward to a common collector (Beneficiary D).
+insert into transaction_edges (from_account, to_account, amount, transaction_time)
+select * from (values
+    ('CUST-40233','Beneficiary A',3000,'2026-06-20T09:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary B',3000,'2026-06-20T10:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary C',3000,'2026-06-20T11:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary D',3000,'2026-06-20T12:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary E',3000,'2026-06-20T13:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary F',3000,'2026-06-20T14:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary G',3000,'2026-06-20T15:05:00'::timestamptz),
+    ('CUST-40233','Beneficiary H',3000,'2026-06-20T16:05:00'::timestamptz),
+    ('Beneficiary A','Beneficiary D',2900,'2026-06-20T17:30:00'::timestamptz),
+    ('Beneficiary B','Beneficiary D',2900,'2026-06-20T18:00:00'::timestamptz)
+) as v
+where not exists (select 1 from transaction_edges);

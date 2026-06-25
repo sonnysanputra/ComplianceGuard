@@ -19,6 +19,7 @@ class CaseState(TypedDict, total=False):
     memory_findings: dict    # long-term memory: this customer's history
     transaction_findings: dict
     timeline_findings: dict   # chronological, annotated event timeline
+    graph_findings: dict      # money-flow network analysis (layering / mule)
     kyc_findings: dict
     watchlist_findings: dict
     adverse_media_findings: dict   # negative-news screening (customer + recipient)
@@ -31,6 +32,8 @@ class CaseState(TypedDict, total=False):
     risk_factors: list       # explainable breakdown: factor + points + evidence
     risk_explanation: str
     recommendation: str
+    confidence: float        # calibrated confidence in the risk decision (0..1)
+    confidence_factors: list # the objective signals behind the confidence
     priority: str            # risk-aware case priority P1-P4 (supersedes intake's)
     priority_reason: str     # why this priority was assigned
     fp_review: dict          # false-positive review outcome (sub-threshold cases)

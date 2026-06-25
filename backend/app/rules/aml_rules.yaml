@@ -181,5 +181,12 @@ behavior_baseline:
     points: 20
     days: 90
 
+# ---- relationship-graph network risk (layering / mule money-flow patterns) ----
+graph_network:
+  rule_id: AML-GRAPH-001
+  name: Money-Flow Network Risk (Layering / Mule)
+  severity: HIGH
+  max_points: 30
+
 scoring:
   escalation_threshold: 60           # final score at/above this escalates to a SAR

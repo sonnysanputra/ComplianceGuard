@@ -85,6 +85,14 @@ def main():
               f"max RM{base.get('max_single_transaction_90d'):,} | "
               f"usual {base.get('usual_countries')} @ {base.get('usual_transaction_hours')} | "
               f"new-recipient rate {base.get('new_recipient_rate')}")
+    gf = snap.get("graph_findings", {})
+    if gf and gf.get("graph_risk_score", 0) > 0:
+        gline = (f"  Network    : graph risk {gf['graph_risk_score']}/30 | "
+                 f"fan-out {gf.get('fan_out_count')} | "
+                 f"rapid-fwd {gf.get('rapid_forwarding_detected')}")
+        if len(gf.get("possible_layering_path", [])) >= 3:
+            gline += f"\n               layering path: {' -> '.join(gf['possible_layering_path'])}"
+        print(gline)
     print(f"  KYC        : {kyc.get('consistency', '?')} | {len(kyc.get('checks_failed', []))} checks failed"
           f"{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
     if kyc.get("key_concern") and kyc.get("key_concern") != "none":
@@ -129,6 +137,10 @@ def main():
     print(f"\nRisk Score : {snap.get('risk_score')}/100  ({snap.get('risk_level')})")
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
     print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")
+    if snap.get("confidence") is not None:
+        print(f"Confidence : {snap.get('confidence'):.0%} (calibrated)")
+        for cf in snap.get("confidence_factors", []):
+            print(f"   • {cf}")
 
     prio = snap.get("priority")
     if prio:

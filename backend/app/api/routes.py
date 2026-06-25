@@ -54,13 +54,14 @@ from app.agents.data_quality import data_quality
 from app.agents.transaction_analysis import transaction_analysis
 from app.agents.kyc_profile import kyc_profile
 from app.agents.watchlist_screening import watchlist_screening
+from app.agents.graph_analysis import graph_analysis
 from app.agents.adverse_media_screening import adverse_media_screening
 from app.agents.policy_rag import policy_rag
 from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
 
 AGENTS = {a.name: a for a in [
-    alert_intake, data_quality, transaction_analysis, kyc_profile,
+    alert_intake, data_quality, transaction_analysis, graph_analysis, kyc_profile,
     watchlist_screening, adverse_media_screening, policy_rag, case_memory, risk_scoring,
 ]}
 
@@ -69,6 +70,7 @@ LABELS = {
     "alert_intake": "Alert Intake Agent",
     "data_quality": "Data Quality Gate",
     "transaction_analysis": "Transaction Analysis Agent",
+    "graph_analysis": "Relationship Graph Agent",
     "kyc_profile": "KYC Profile Agent",
     "watchlist_screening": "Watchlist Screening Agent",
     "adverse_media_screening": "Adverse Media Screening Agent",
@@ -135,6 +137,7 @@ class CaseSnapshot(BaseModel):
     data_quality: Optional[dict] = None
     transaction_findings: Optional[dict] = None
     timeline_findings: Optional[dict] = None
+    graph_findings: Optional[dict] = None
     kyc_findings: Optional[dict] = None
     watchlist_findings: Optional[dict] = None
     adverse_media_findings: Optional[dict] = None
@@ -147,6 +150,8 @@ class CaseSnapshot(BaseModel):
     risk_factors: Optional[list] = None
     key_drivers: Optional[list] = None
     recommendation: Optional[str] = None
+    confidence: Optional[float] = None
+    confidence_factors: Optional[list] = None
     priority: Optional[str] = None
     priority_reason: Optional[str] = None
     sla_due_at: Optional[str] = None
@@ -219,6 +224,7 @@ def _snapshot(case_id: str) -> dict:
         "fp_review": v.get("fp_review"),
         "transaction_findings": v.get("transaction_findings"),
         "timeline_findings": v.get("timeline_findings"),
+        "graph_findings": v.get("graph_findings"),
         "kyc_findings": v.get("kyc_findings"),
         "watchlist_findings": v.get("watchlist_findings"),
         "adverse_media_findings": v.get("adverse_media_findings"),
@@ -228,6 +234,7 @@ def _snapshot(case_id: str) -> dict:
         "ai_score": v.get("ai_score"), "risk_level": v.get("risk_level"),
         "risk_factors": v.get("risk_factors"), "key_drivers": v.get("key_drivers"),
         "recommendation": v.get("recommendation"),
+        "confidence": v.get("confidence"), "confidence_factors": v.get("confidence_factors"),
         "priority": priority, "priority_reason": v.get("priority_reason"),
         "sla_due_at": sla_due_at(priority), "sla_label": sla_label(priority),
         "risk_explanation": v.get("risk_explanation"),

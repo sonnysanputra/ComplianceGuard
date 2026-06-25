@@ -11,6 +11,7 @@ from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.core.evidence import EvidenceCollector, index_evidence
 from app.core.priority import assess_priority
+from app.core.confidence import calibrate_confidence
 from app.rules.rule_engine import evaluate_aml_rules, get_rules
 from app.tools.db import get_customer, get_transactions
 
@@ -50,6 +51,8 @@ class RiskScoringAgent(BaseAgent):
                 "risk_factors": [], "key_drivers": [],
                 "priority": "P2",
                 "priority_reason": "Investigation tool failure - needs prompt manual review.",
+                "confidence": 0.0,
+                "confidence_factors": [f"{', '.join(failed)} tool failure(s) -- scoring unreliable"],
                 "recommendation": "Escalate for manual review - one or more "
                                   "investigation tools failed.",
                 "risk_explanation": explanation,
@@ -71,7 +74,8 @@ class RiskScoringAgent(BaseAgent):
         customer = get_customer(alert["customer_id"])
         transactions = get_transactions(alert["customer_id"])
         am = state.get("adverse_media_findings", {})
-        result = evaluate_aml_rules(customer, transactions, wf, mem, alert, am)
+        gf = state.get("graph_findings", {})
+        result = evaluate_aml_rules(customer, transactions, wf, mem, alert, am, gf)
 
         tf = result.flags
         typology = result.typology
@@ -135,7 +139,11 @@ class RiskScoringAgent(BaseAgent):
         explanation = assessment.get("reasoning") or (
             f"Combined rule ({rule_score}) and AI ({ai_score}) assessment.")
         key_drivers = assessment.get("key_drivers", [])
-        confidence = float(assessment.get("confidence", 85)) / 100.0
+        llm_confidence = float(assessment.get("confidence", 85)) / 100.0
+
+        # ---- calibrate confidence from OBJECTIVE signals, not LLM self-report ----
+        confidence, confidence_factors = calibrate_confidence(
+            {**state, "risk_factors": factors}, base=llm_confidence)
 
         escalate_at = get_rules()["scoring"]["escalation_threshold"]
         rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= escalate_at
@@ -156,6 +164,8 @@ class RiskScoringAgent(BaseAgent):
             "recommendation": rec,
             "priority": priority,
             "priority_reason": priority_reason,
+            "confidence": confidence,       # calibrated, not LLM self-reported
+            "confidence_factors": confidence_factors,
             "risk_explanation": explanation,
             "audit_rationales": [self.trace(
                 explanation, confidence,

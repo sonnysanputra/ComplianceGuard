@@ -183,6 +183,8 @@ class SARDraftingAgent(BaseAgent):
                 "rule_score": state.get("rule_score"),
                 "ai_score": state.get("ai_score"),
                 "risk_level": state.get("risk_level"),
+                "confidence": f"{state.get('confidence'):.0%}" if state.get("confidence") is not None else None,
+                "confidence_factors": "; ".join(state.get("confidence_factors") or []) or None,
                 "key_drivers": state.get("key_drivers"),
                 "explanation": state.get("risk_explanation"),
             },

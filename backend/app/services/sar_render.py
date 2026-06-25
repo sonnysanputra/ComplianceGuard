@@ -80,7 +80,7 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
           for p in policies] or ["None cited."]),
         ("9. Risk Assessment",
          _kv(risk, "final_score", "rule_score", "ai_score", "risk_level",
-             "key_drivers", "explanation")),
+             "confidence", "confidence_factors", "key_drivers", "explanation")),
         ("10. AI Recommendation",
          _kv(ai, "recommended_action", "narrative", "human_review_required")),
         ("11. Human Analyst Decision",

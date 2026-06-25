@@ -106,6 +106,9 @@ def offline(monkeypatch):
                         lambda cid: TRANSACTIONS.get(cid, []))
     monkeypatch.setattr("app.agents.transaction_timeline.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
+    monkeypatch.setattr("app.agents.graph_analysis.get_transactions",
+                        lambda cid: TRANSACTIONS.get(cid, []))
+    monkeypatch.setattr("app.agents.graph_analysis.get_transaction_edges", lambda: [])
     monkeypatch.setattr("app.agents.kyc_profile.get_customer", lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.risk_scoring.get_customer", lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.risk_scoring.get_transactions",

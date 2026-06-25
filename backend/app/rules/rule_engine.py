@@ -165,7 +165,8 @@ def detect_transaction_typology(transactions: list) -> dict:
 # ======================================================================
 def evaluate_aml_rules(customer: dict, transactions: list,
                        watchlist: dict = None, memory: dict = None,
-                       alert: dict = None, adverse_media: dict = None) -> RuleResult:
+                       alert: dict = None, adverse_media: dict = None,
+                       graph: dict = None) -> RuleResult:
     """Run every AML rule over the case and return the triggered rules, the
     total rule score, and the detected typology. Pure -- no I/O."""
     R = get_rules()
@@ -173,6 +174,7 @@ def evaluate_aml_rules(customer: dict, transactions: list,
     wf = watchlist or {}
     mem = memory or {}
     am = adverse_media or {}
+    gf = graph or {}
     det = detect_transaction_typology(transactions)
     flags = det["flags"]
     tr = det["total_recent"]
@@ -297,6 +299,27 @@ def evaluate_aml_rules(customer: dict, transactions: list,
             source="Adverse media screening",
             evidence_items=[ev("adverse_media", h.get("name"), "negative_news",
                                h.get("risk_level"), h.get("title")) for h in hits]))
+
+    # --- relationship-graph network risk (layering / mule) ---
+    gcfg = R.get("graph_network")
+    if gcfg and gf.get("graph_risk_score", 0) > 0:
+        pts = min(gf["graph_risk_score"], gcfg.get("max_points", 30))
+        path = gf.get("possible_layering_path") or []
+        bits = []
+        if gf.get("fan_out_count", 0) >= 5:
+            bits.append(f"fan-out to {gf['fan_out_count']} accounts")
+        if gf.get("rapid_forwarding_detected"):
+            bits.append("rapid forwarding")
+        if gf.get("common_recipient"):
+            bits.append(f"convergence on {', '.join(gf['common_recipient'][:2])}")
+        if gf.get("circular_flow"):
+            bits.append("circular flow")
+        fire(gcfg, pts,
+             "Money-flow network: " + ("; ".join(bits) or "elevated network risk")
+             + (f"; path {' -> '.join(path)}" if len(path) >= 3 else ""),
+             items=[ev("transaction", (customer or {}).get("customer_id", "account"),
+                       "graph_risk_score", gf["graph_risk_score"],
+                       "Relationship-graph network laundering signature")])
 
     # --- account behaviour baseline deviations ---
     bcfg = R.get("behavior_baseline")
