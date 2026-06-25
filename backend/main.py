@@ -77,8 +77,11 @@ def main():
           f"{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
     if kyc.get("key_concern") and kyc.get("key_concern") != "none":
         print(f"               key concern: {kyc.get('key_concern')}")
-    print(f"  Watchlist  : {wl.get('verdict')} "
-          f"(best {wl.get('match_score')}% on {wl.get('list_type')})")
+    cs, rs = wl.get("customer_screening", {}), wl.get("recipient_screening", {})
+    print(f"  Watchlist  : customer={cs.get('verdict')} | recipient={rs.get('verdict')}"
+          f"{' (' + str(rs.get('best_match')) + ', ' + str(rs.get('list_type')) + ' ' + str(rs.get('match_score')) + '%)' if rs.get('best_match') else ''}")
+    if wl.get("required_action") and wl.get("is_match") or (rs.get("verdict") == "POSSIBLE_MATCH_REQUIRES_REVIEW"):
+        print(f"               action: {wl.get('required_action')}")
     print(f"  Memory     : {mem.get('memory_risk_signal')} [{mem.get('memory_risk_direction')}]")
     pols = snap.get("retrieved_policies", [])
     if pols:

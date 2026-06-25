@@ -395,6 +395,14 @@ def country_risk():
     return get_country_risk()
 
 
+@app.get("/watchlist")
+def watchlist():
+    """The active watchlist entities across all lists (sanctions, PEP, blacklist,
+    adverse media, scam/mule accounts, high-risk entities)."""
+    from app.tools.db import get_watchlist
+    return get_watchlist()
+
+
 @app.post("/rules/reload")
 def rules_reload():
     """Re-read risk_rules.yaml after editing thresholds -- no restart needed."""

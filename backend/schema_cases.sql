@@ -70,6 +70,21 @@ create table if not exists sar_drafts (
     created_at       timestamptz default now()
 );
 
+-- Watchlist screening matches recorded per case
+create table if not exists watchlist_matches (
+    id                    bigserial primary key,
+    case_id               text references cases(case_id),
+    searched_name         text,
+    matched_entity_id     bigint,        -- watchlist_entities.id
+    matched_entity        text,
+    list_type             text,
+    match_score           numeric,
+    match_type            text,          -- exact | fuzzy | alias | no_match
+    false_positive_checked boolean default false,
+    analyst_confirmed     boolean,
+    created_at            timestamptz default now()
+);
+
 -- The human-in-the-loop decisions
 create table if not exists human_decisions (
     id               bigserial primary key,

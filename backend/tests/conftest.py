@@ -70,9 +70,12 @@ TRANSACTIONS = {
 }
 
 WATCHLIST = [
-    {"entity_name": "Global Trading Limited", "list_type": "internal_blacklist", "risk_level": "High"},
-    {"entity_name": "Ahmad Zulkifli", "list_type": "PEP", "risk_level": "High"},
-    {"entity_name": "Northern Star Holdings", "list_type": "sanctions", "risk_level": "High"},
+    {"id": 1, "entity_name": "Global Trade Limited", "entity_type": "company",
+     "list_type": "INTERNAL_BLACKLIST", "risk_level": "High"},
+    {"id": 2, "entity_name": "Ahmad Zulkifli", "entity_type": "individual",
+     "list_type": "PEP", "risk_level": "High"},
+    {"id": 3, "entity_name": "Northern Star Holdings", "entity_type": "company",
+     "list_type": "UN_SANCTIONS", "risk_level": "Critical"},
 ]
 
 

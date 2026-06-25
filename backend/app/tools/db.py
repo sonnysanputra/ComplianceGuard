@@ -44,5 +44,6 @@ def get_transactions(customer_id: str) -> list[dict]:
 
 
 def get_watchlist() -> list[dict]:
-    res = _db().table("watchlist").select("*").execute()
+    """Active watchlist entities across all lists (sanctions, PEP, blacklist, etc.)."""
+    res = _db().table("watchlist_entities").select("*").eq("is_active", True).execute()
     return res.data

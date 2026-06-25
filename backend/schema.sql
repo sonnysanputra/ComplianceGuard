@@ -78,20 +78,34 @@ insert into transactions values
 ('TXN-4008','CUST-40233',3000,'2026-06-20T17:30:00','Beneficiary H','Malaysia','transfer',true,'out');
 
 -- --------------------------------------------------------------------
--- Watchlist
+-- Watchlist entities (multi-list: sanctions, PEP, blacklist, adverse media,
+-- scam/mule accounts, high-risk entities). Modelled on the kind of consolidated
+-- screening data a reporting institution maintains (e.g. UN Security Council
+-- Consolidated List for sanctions).
 -- --------------------------------------------------------------------
-create table watchlist (
-    id          serial primary key,
-    entity_name text,
-    list_type   text,
-    risk_level  text
+drop table if exists watchlist_entities cascade;
+create table watchlist_entities (
+    id           bigserial primary key,
+    entity_name  text not null,
+    entity_type  text,            -- individual | company | account | wallet | country
+    list_type    text,            -- UN_SANCTIONS | PEP | INTERNAL_BLACKLIST | ADVERSE_MEDIA | SCAM_ACCOUNT | HIGH_RISK_ENTITY
+    reference_id text,
+    country      text,
+    risk_level   text,
+    source       text,
+    date_added   timestamptz default now(),
+    is_active    boolean default true
 );
 
-insert into watchlist (entity_name, list_type, risk_level) values
-('Global Trading Limited', 'internal_blacklist', 'High'),
-('Ahmad Zulkifli',         'PEP',                'High'),
-('Northern Star Holdings', 'sanctions',          'High'),
-('Overseas Holdings Inc',  'internal_blacklist', 'Medium');
+insert into watchlist_entities (entity_name, entity_type, list_type, reference_id, country, risk_level, source) values
+('Global Trade Limited',      'company',    'INTERNAL_BLACKLIST', 'IBL-1001',  'Cambodia',  'High',     'Internal investigations unit'),
+('Overseas Holdings Inc',     'company',    'INTERNAL_BLACKLIST', 'IBL-1002',  'Malaysia',  'Medium',   'Internal investigations unit'),
+('Ahmad Zulkifli',            'individual', 'PEP',                'PEP-2001',  'Malaysia',  'High',     'Domestic PEP register'),
+('Northern Star Holdings',    'company',    'UN_SANCTIONS',       'UN-3001',   'North Korea','Critical', 'UN Security Council Consolidated List'),
+('Reza Karimi',               'individual', 'UN_SANCTIONS',       'UN-3002',   'Iran',      'Critical', 'UN Security Council Consolidated List'),
+('Sunrise Media Group',       'company',    'ADVERSE_MEDIA',      'AM-4001',   'Malaysia',  'Medium',   'Adverse media monitoring'),
+('Fast Cash Mule 88',         'account',    'SCAM_ACCOUNT',       'SCAM-5001', 'Malaysia',  'High',     'Known mule account database'),
+('Crypto Mixer Wallet 0x9f',  'wallet',     'HIGH_RISK_ENTITY',   'HRE-6001',  'Unknown',   'High',     'Blockchain analytics');
 
 -- --------------------------------------------------------------------
 -- Country-risk register (production-storage form of country_risk.yaml).

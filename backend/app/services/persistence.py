@@ -53,8 +53,20 @@ def persist_case(state: dict, status: str) -> bool:
         }).execute()
 
         # clear child rows so a re-run doesn't duplicate them
-        for tbl in ("case_events", "agent_outputs", "risk_assessments", "sar_drafts"):
+        for tbl in ("case_events", "agent_outputs", "risk_assessments",
+                    "sar_drafts", "watchlist_matches"):
             db.table(tbl).delete().eq("case_id", case_id).execute()
+
+        # watchlist screening matches
+        wl_matches = (state.get("watchlist_findings") or {}).get("all_matches", [])
+        if wl_matches:
+            db.table("watchlist_matches").insert([{
+                "case_id": case_id, "searched_name": m.get("searched_name"),
+                "matched_entity_id": m.get("matched_entity_id"),
+                "matched_entity": m.get("matched_entity"),
+                "list_type": m.get("list_type"), "match_score": m.get("score"),
+                "match_type": m.get("match_type"),
+            } for m in wl_matches]).execute()
 
         # 2) events + 3) structured outputs, both from the CoT traces
         events, outputs = [], []
