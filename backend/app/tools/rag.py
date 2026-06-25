@@ -86,6 +86,8 @@ def load_policies() -> list[dict]:
             "title": meta.get("title") or path.stem.replace("_", " ").title(),
             "section": meta.get("section", ""),
             "category": meta.get("category", "General"),
+            "jurisdiction": meta.get("jurisdiction", "General"),
+            "source": meta.get("source", ""),
             "text": body,
         })
     return policies
@@ -127,7 +129,8 @@ def get_policy_collection():
             documents=[p["text"] for p in policies],
             embeddings=embed([p["text"] for p in policies]),
             metadatas=[{"id": p["id"], "title": p["title"],
-                        "section": p["section"], "category": p["category"]}
+                        "section": p["section"], "category": p["category"],
+                        "jurisdiction": p["jurisdiction"], "source": p["source"]}
                        for p in policies],
         )
         logger.info(f"[rag] indexed {len(policies)} policy documents")
@@ -183,6 +186,8 @@ def search_policies(query: str, k: int = 5, n: int = 2) -> list[dict]:
             "title": meta.get("title"),
             "section": meta.get("section"),
             "category": meta.get("category"),
+            "jurisdiction": meta.get("jurisdiction"),
+            "source": meta.get("source"),
             "content": doc,
             "retrieval_score": round(max(0.0, 1 - dist), 3),         # cosine -> similarity
             "rerank_score": round(1 / (1 + math.exp(-float(logit))), 3),  # sigmoid -> 0..1

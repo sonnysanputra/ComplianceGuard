@@ -37,6 +37,7 @@ class SARDraftingAgent(BaseAgent):
         policies = state.get("retrieved_policies", [])
         refs = "\n".join(
             f"    - {p['policy_id']}: {p['title']} (section {p['section']})"
+            + (f" [{p.get('source')}]" if p.get("source") else "")
             for p in policies) or "    - none"
 
         draft = self.llm(
