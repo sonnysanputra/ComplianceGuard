@@ -13,6 +13,7 @@ customers whose flags have consistently turned out to be false positives.
 
 from app.agents.base import BaseAgent
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.tools.db import get_customer
 from app.services.persistence import get_customer_history
 
@@ -59,6 +60,19 @@ class CaseMemoryAgent(BaseAgent):
         # DB facts are certain, so confidence is high
         confidence = 0.9
 
+        # ---- structured evidence from customer history ----
+        coll = EvidenceCollector()
+        ev_ids = []
+        if previous_escalations:
+            ev_ids.append(coll.add("memory", cid, "previous_escalations", previous_escalations,
+                                   f"{previous_escalations} prior escalation(s) for this customer"))
+        if same_recipient_seen_before:
+            ev_ids.append(coll.add("memory", cid, "same_recipient_seen_before", True,
+                                   "Same recipient seen in a previous investigation"))
+        if previous_false_positives:
+            ev_ids.append(coll.add("memory", cid, "previous_false_positives", previous_false_positives,
+                                   f"{previous_false_positives} prior false positive(s) for this customer"))
+
         return {
             "memory_findings": {
                 "previous_cases_found": previous_cases_found,
@@ -69,7 +83,9 @@ class CaseMemoryAgent(BaseAgent):
                 "baseline_prior_alerts": baseline_prior_alerts,
                 "memory_risk_direction": direction,
                 "memory_risk_signal": signal,
+                "evidence_ids": ev_ids,
             },
+            "evidence": coll.items,
             "audit_rationales": [self.trace(signal, confidence,
                                       output={"direction": direction,
                                               "prior_cases": previous_cases_found})],

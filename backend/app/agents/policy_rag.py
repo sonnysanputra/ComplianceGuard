@@ -7,6 +7,7 @@ Retrieves the most relevant internal AML policies using two-stage RAG
 
 from app.agents.base import BaseAgent
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.tools.rag import search_policies
 
 
@@ -25,8 +26,15 @@ class PolicyRAGAgent(BaseAgent):
         )
         confidence = 0.9 if policies else 0.3
 
+        # ---- structured evidence: one item per cited policy ----
+        coll = EvidenceCollector()
+        for p in policies:
+            coll.add("policy", p["policy_id"], "section", p.get("section", ""),
+                     f"{p['title']} (rerank {p.get('rerank_score', 0):.0%})")
+
         return {
             "retrieved_policies": policies,
+            "evidence": coll.items,
             "audit_rationales": [self.trace(reasoning, confidence,
                                       output={"citations": [p["policy_id"] for p in policies]})],
             "audit": stamp(f"{self.label} retrieved {len(policies)} citations: {cites or 'none'}"),

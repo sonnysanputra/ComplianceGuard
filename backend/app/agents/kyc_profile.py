@@ -14,6 +14,7 @@ is warranted. Deterministic checks stay reliable; the LLM adds the judgment.
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.tools.db import get_customer
 
 # Occupations whose declared income rarely supports large transfers
@@ -101,6 +102,19 @@ class KYCProfileAgent(BaseAgent):
         consistency = assessment.get("consistency", "inconsistent" if failed else "consistent")
         key_concern = assessment.get("key_concern", failed[0] if failed else "none")
 
+        # ---- structured evidence from the profile ----
+        coll = EvidenceCollector()
+        ev_ids = [coll.add("customer_profile", cid, "declared_income", income,
+                           f"Declared income RM{income}/mo vs RM{burst} activity ({income_ratio}x)")]
+        if cust.get("previous_alerts", 0):
+            ev_ids.append(coll.add("customer_profile", cid, "previous_alerts",
+                                   cust.get("previous_alerts", 0),
+                                   f"{cust.get('previous_alerts')} prior alert(s) on record"))
+        if checks["occupation_risk"]:
+            ev_ids.append(coll.add("customer_profile", cid, "occupation",
+                                   cust.get("occupation", ""),
+                                   "Occupation unlikely to support the flagged amounts"))
+
         return {
             "kyc_findings": {
                 "declared_income": income,
@@ -116,7 +130,9 @@ class KYCProfileAgent(BaseAgent):
                 "key_concern": key_concern,
                 "income_mismatch": checks["income_mismatch"],   # kept for risk scoring
                 "edd_required": edd_required,
+                "evidence_ids": ev_ids,
             },
+            "evidence": coll.items,
             "audit_rationales": [self.trace(
                 reasoning, confidence,
                 evidence=[f"{c.replace('_', ' ')} failed" for c in failed],

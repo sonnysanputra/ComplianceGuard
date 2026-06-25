@@ -143,6 +143,7 @@ class CaseSnapshot(BaseModel):
     human_review: Optional[dict] = None
     errors: Optional[list] = None
     audit: Optional[list] = None
+    evidence: Optional[list] = None
     audit_rationales: Optional[list] = None
     a2a_messages: Optional[list] = None
 
@@ -227,6 +228,7 @@ def _snapshot(case_id: str) -> dict:
         "human_decision": v.get("human_decision"),
         "human_review": v.get("human_review"), "errors": v.get("errors"),
         "audit": sorted(v.get("audit", [])),
+        "evidence": v.get("evidence"),
         "audit_rationales": v.get("audit_rationales"), "a2a_messages": v.get("a2a_messages"),
     }
 
@@ -269,7 +271,8 @@ def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
     if snap.get("risk_factors"):
         sections.append(("Triggered AML Rules", [
             f"[{f.get('rule_id', '')}] {f.get('points'):+} {f.get('name')} "
-            f"({f.get('severity', '')}) - {f.get('evidence')}"
+            f"({f.get('severity', '')}) - {f.get('evidence')} "
+            f"[evidence: {', '.join(f.get('evidence_ids', [])) or 'n/a'}]"
             for f in snap["risk_factors"]]))
     sections.append(("Agent Findings", [
         f"Typology: {tf.get('typology')}",
@@ -299,6 +302,10 @@ def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
         ]))
     elif snap.get("human_decision"):
         sections.append(("Human Decision", [f"Decision: {snap.get('human_decision')}"]))
+    if snap.get("evidence"):
+        sections.append(("Evidence Register", [
+            f"[{e['evidence_id']}] {e['source_type']}/{e['source_id']}.{e['field']} "
+            f"= {e['value']} - {e['description']}" for e in snap["evidence"]]))
     if snap.get("audit"):
         sections.append(("Audit Timeline", list(snap["audit"])))
     return sections
@@ -525,6 +532,13 @@ def case_timeline(case_id: str):
     tf = (v or {}).get("timeline_findings") or {}
     return {"case_id": case_id, "timeline": tf.get("timeline", []),
             "notable_events": tf.get("notable_events", []), "summary": tf.get("summary")}
+
+
+@app.get("/case/{case_id}/evidence")
+def case_evidence(case_id: str):
+    """The structured evidence pool -- every EvidenceItem behind the case's claims."""
+    v = graph.get_state({"configurable": {"thread_id": case_id}}).values
+    return {"case_id": case_id, "evidence": (v or {}).get("evidence", [])}
 
 
 @app.get("/case/{case_id}/sar", response_model=SARResponse)

@@ -9,6 +9,7 @@ the judgment, while the rule score keeps it grounded and explainable.
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector, index_evidence
 from app.rules.rule_engine import evaluate_aml_rules, get_rules
 from app.tools.db import get_customer, get_transactions
 
@@ -71,7 +72,25 @@ class RiskScoringAgent(BaseAgent):
         tf = result.flags
         typology = result.typology
         rule_score = result.total_rule_score
-        factors = [r.to_dict() for r in result.triggered_rules]
+
+        # ---- 1b. Turn each rule into a factor that REFERENCES evidence by ID ----
+        # Reuse the IDs upstream agents already minted (shared pool); mint any that
+        # are missing. This gives every factor full traceability to the raw facts.
+        coll = EvidenceCollector(prefix="RF")   # 'RF' namespace for anything it must mint
+        existing = index_evidence(state.get("evidence", []))
+        factors = []
+        for r in result.triggered_rules:
+            d = r.to_dict()
+            items = d.pop("evidence_items", []) or []
+            ids = []
+            for it in items:
+                key = (it["source_type"], str(it["source_id"]), it["field"])
+                ids.append(existing.get(key) or coll.add(**it))
+            if not ids:   # guarantee at least one evidence reference per factor
+                ids = [coll.add("rule", d["rule_id"], "evidence", d["points"], d["evidence"])]
+            d["factor"] = d["name"]                # explicit 'factor' label (per spec)
+            d["evidence_ids"] = list(dict.fromkeys(ids))   # dedupe, keep order
+            factors.append(d)
 
         # ---- 2. Qwen's independent AI risk assessment ----
         assessment = self.think(
@@ -121,7 +140,8 @@ class RiskScoringAgent(BaseAgent):
             "rule_score": rule_score,
             "ai_score": ai_score,
             "risk_level": risk_level,
-            "risk_factors": factors,        # explainable breakdown: factor + points + evidence
+            "risk_factors": factors,        # each factor references evidence by ID
+            "evidence": coll.items,         # any evidence the engine had to mint itself
             "key_drivers": key_drivers,
             "recommendation": rec,
             "risk_explanation": explanation,

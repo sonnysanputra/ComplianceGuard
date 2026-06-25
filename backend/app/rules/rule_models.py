@@ -15,8 +15,11 @@ class TriggeredRule:
     name: str
     points: int
     severity: str          # CRITICAL | HIGH | MEDIUM | LOW | INFO
-    evidence: str
+    evidence: str          # human-readable summary (kept for display / back-compat)
     source: str = "Internal AML typology rule"
+    # structured evidence inputs: each is {source_type, source_id, field, value, description}
+    # (the risk-scoring agent resolves these to evidence_ids against the shared pool)
+    evidence_items: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

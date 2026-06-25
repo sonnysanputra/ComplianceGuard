@@ -9,6 +9,7 @@ kept as a grounding signal + safety fallback if the LLM response can't be parsed
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.rules.rule_engine import detect_transaction_typology
 from app.tools.db import get_transactions
 
@@ -82,6 +83,18 @@ class TransactionAnalysisAgent(BaseAgent):
         confidence = max(float(analysis.get("confidence", 80)) / 100.0, 0.5)
         llm_flags = analysis.get("red_flags", [])   # list of {flag, confidence}
 
+        # ---- structured evidence: one item per flagged transaction ----
+        coll = EvidenceCollector()
+        evidence_ids = []
+        for t in (x for x in txns if x.get("is_new_recipient") and x.get("direction", "out") == "out"):
+            evidence_ids.append(coll.add(
+                "transaction", t.get("transaction_id"), "amount", t.get("amount"),
+                f"RM{t.get('amount'):,} to {t.get('recipient')} "
+                f"({t.get('country')})"))
+            if t.get("country") and t["country"] != "Malaysia":
+                coll.add("transaction", t.get("transaction_id"), "country", t.get("country"),
+                         f"Transfer to {t.get('country')}")
+
         return {
             "transaction_findings": {
                 "flags": det["flags"],          # reliable signal for risk scoring
@@ -91,7 +104,9 @@ class TransactionAnalysisAgent(BaseAgent):
                 "distinct_recipients": det["distinct_recipients"],
                 "window_hours": det["window_hours"],
                 "summary": reasoning,
+                "evidence_ids": evidence_ids,
             },
+            "evidence": coll.items,
             "audit_rationales": [self.trace(
                 reasoning, confidence,
                 evidence=[f.get("flag") for f in llm_flags

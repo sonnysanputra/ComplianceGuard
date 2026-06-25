@@ -188,6 +188,8 @@ class SARDraftingAgent(BaseAgent):
             },
             "human_analyst_decision": {},   # filled in after the human decides
             "attachments": attachments,
+            # the full structured evidence pool -- every claim is traceable to an ID
+            "evidence_register": state.get("evidence", []),
         }
 
     @staticmethod

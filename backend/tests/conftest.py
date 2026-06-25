@@ -34,8 +34,13 @@ CUSTOMERS = {
 }
 
 
+_tx_seq = [0]
+
+
 def _tx(amount, t, recipient, country, new, direction):
-    return {"amount": amount, "date_time": t, "recipient": recipient,
+    _tx_seq[0] += 1
+    return {"transaction_id": f"TXN-{8800 + _tx_seq[0]}",
+            "amount": amount, "date_time": t, "recipient": recipient,
             "country": country, "transaction_type": "transfer",
             "is_new_recipient": new, "direction": direction}
 

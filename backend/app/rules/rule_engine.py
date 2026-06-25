@@ -179,16 +179,51 @@ def evaluate_aml_rules(customer: dict, transactions: list,
         "countries": ", ".join(describe(c) for c in det["destination_countries"]),
     }
 
+    # ---- structured evidence inputs per typology (resolved to IDs by risk scoring) ----
+    def ev(source_type, source_id, fieldname, value, description):
+        return {"source_type": source_type, "source_id": str(source_id),
+                "field": fieldname, "value": value, "description": description}
+
+    cid = (customer or {}).get("customer_id", "unknown")
+    outgoing = [t for t in transactions if t.get("direction", "out") == "out"]
+    incoming = [t for t in transactions if t.get("direction") == "in"]
+    recent = [t for t in outgoing if t.get("is_new_recipient")]
+    sc_c = rules.get("structuring", {}).get("conditions", {})
+    thr = sc_c.get("internal_review_threshold", 10000)
+    near_lo = sc_c.get("amount_min_ratio_to_threshold", 0.9) * thr
+    geo_levels = set(rules.get("high_risk_overseas_transfer", {})
+                     .get("conditions", {}).get("recipient_country_risk_in", []))
+
+    typ_evidence = {
+        "structuring": [ev("transaction", t.get("transaction_id"), "amount", t["amount"],
+                           "Transfer close to the internal review threshold")
+                        for t in recent if near_lo <= t["amount"] < thr],
+        "money_mule": [ev("transaction", t.get("transaction_id"), "amount", t["amount"],
+                          "Large incoming funds") for t in incoming]
+                      + [ev("transaction", t.get("transaction_id"), "recipient", t["recipient"],
+                            "Rapid onward transfer to a new recipient") for t in recent],
+        "layering_dispersion": [ev("transaction", t.get("transaction_id"), "recipient", t["recipient"],
+                                   "Funds dispersed to a newly added recipient") for t in recent],
+        "high_risk_overseas_transfer": [
+            ev("transaction", t.get("transaction_id"), "country", t["country"],
+               "Transfer to a flagged jurisdiction")
+            for t in recent if t.get("country") and risk_level(t["country"]) in geo_levels],
+        "volume_spike": [ev("transaction", t.get("transaction_id"), "amount", t["amount"],
+                            "Activity above the customer's historical baseline") for t in recent],
+    }
+
     # --- SC red-flag typology rules (metadata + evidence_template from YAML) ---
     for flag, typ in _FLAG_TO_RULE.items():
         if flags.get(flag) and typ in rules:
             r = rules[typ]
             fired.append(TriggeredRule(r["rule_id"], r["name"], r["risk_points"],
                                        r["severity"], _render(r.get("evidence_template"), ctx),
-                                       source="SC Malaysia red-flag typology"))
+                                       source="SC Malaysia red-flag typology",
+                                       evidence_items=typ_evidence.get(typ, [])))
 
-    def fire(cfg, points, evidence):
-        fired.append(TriggeredRule(cfg["rule_id"], cfg["name"], points, cfg["severity"], evidence))
+    def fire(cfg, points, evidence, items=None):
+        fired.append(TriggeredRule(cfg["rule_id"], cfg["name"], points, cfg["severity"],
+                                   evidence, evidence_items=items or []))
 
     # --- KYC income / activity mismatch ---
     kyc = R["kyc"]
@@ -197,7 +232,9 @@ def evaluate_aml_rules(customer: dict, transactions: list,
     if income and burst > kyc["income_mismatch_ratio"] * income:
         fire(kyc, kyc["risk_points"],
              f"RM{burst} activity vs RM{income} declared monthly income "
-             f"({round(burst / max(income, 1), 1)}x)")
+             f"({round(burst / max(income, 1), 1)}x)",
+             items=[ev("customer_profile", cid, "declared_income", income,
+                       f"Declared income RM{income}/mo vs RM{burst} flagged activity")])
 
     # --- watchlist ---
     wl = R["watchlist"]
@@ -205,37 +242,53 @@ def evaluate_aml_rules(customer: dict, transactions: list,
         fired.append(TriggeredRule(wl["match_rule_id"], wl["match_name"],
                                    wl["match_risk_points"], wl["match_severity"],
                                    f"Match: {wf.get('best_match')} "
-                                   f"({wf.get('match_score')}%, {wf.get('list_type')})"))
+                                   f"({wf.get('match_score')}%, {wf.get('list_type')})",
+                                   evidence_items=[ev("watchlist", wf.get("best_match"),
+                                       "match_score", wf.get("match_score"),
+                                       f"{wf.get('list_type')} name match")]))
     if wf.get("high_risk_country"):
         fired.append(TriggeredRule(wl["country_rule_id"], wl["country_name"],
                                    wl["high_risk_country_points"], wl["country_severity"],
-                                   "Recipient jurisdiction is on the high-risk list"))
+                                   "Recipient jurisdiction is on the high-risk list",
+                                   evidence_items=[ev("transaction", (alert or {}).get("recipient", "recipient"),
+                                       "country", (alert or {}).get("country", ""),
+                                       "Recipient jurisdiction is on the high-risk list")]))
 
     # --- prior alert history ---
     hist = R["history"]
     prior = (customer or {}).get("previous_alerts", 0) or 0
     if prior > 0:
         fire(hist, hist["prior_alert_points"],
-             f"{prior} prior alert(s) on the customer's KYC record")
+             f"{prior} prior alert(s) on the customer's KYC record",
+             items=[ev("customer_profile", cid, "previous_alerts", prior,
+                       f"{prior} prior alert(s) on record")])
 
     # --- long-term memory ---
     memcfg = R["memory"]
     if mem.get("previous_escalations", 0) > 0:
         fired.append(TriggeredRule(memcfg["escalation_rule_id"], memcfg["escalation_name"],
                                    memcfg["prior_escalation_points"], memcfg["escalation_severity"],
-                                   f"{mem.get('previous_escalations')} prior escalation(s) for this customer"))
+                                   f"{mem.get('previous_escalations')} prior escalation(s) for this customer",
+                                   evidence_items=[ev("memory", cid, "previous_escalations",
+                                       mem.get("previous_escalations"),
+                                       "Prior escalation(s) for this customer")]))
     if mem.get("same_recipient_seen_before"):
         fired.append(TriggeredRule(memcfg["recipient_rule_id"], memcfg["recipient_name"],
                                    memcfg["repeat_recipient_points"], memcfg["recipient_severity"],
-                                   "Same recipient seen in a previous investigation"))
+                                   "Same recipient seen in a previous investigation",
+                                   evidence_items=[ev("memory", cid, "same_recipient_seen_before", True,
+                                       "Same recipient seen in a previous investigation")]))
 
     # --- false-positive reduction (negative adjustment) ---
     if mem.get("memory_risk_direction") == "reduce":
         fp = R["false_positive"]
-        ev = _render(fp.get("evidence_template"),
-                     {"prior_false_positives": mem.get("previous_false_positives", 0)})
+        fp_ev = _render(fp.get("evidence_template"),
+                        {"prior_false_positives": mem.get("previous_false_positives", 0)})
         fired.append(TriggeredRule(fp["rule_id"], fp["name"], fp["risk_adjustment"],
-                                   fp["severity"], ev, source="False positive check"))
+                                   fp["severity"], fp_ev, source="False positive check",
+                                   evidence_items=[ev("memory", cid, "previous_false_positives",
+                                       mem.get("previous_false_positives", 0),
+                                       "Prior false positive(s) for this customer")]))
 
     total = max(0, min(sum(r.points for r in fired), 100))
     return RuleResult(fired, total, det["typology"], flags)

@@ -17,6 +17,7 @@ from datetime import datetime
 
 from app.agents.base import BaseAgent
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.rules.country_risk import high_risk_countries, is_high_risk
 from app.rules.rule_engine import get_rules
 from app.tools.db import get_transactions
@@ -82,6 +83,7 @@ class TransactionTimelineAgent(BaseAgent):
 
             timeline.append({
                 "time": when,
+                "transaction_id": t.get("transaction_id"),
                 "direction": direction,
                 "amount": amount,
                 "recipient": recipient,
@@ -96,6 +98,13 @@ class TransactionTimelineAgent(BaseAgent):
 
         # events worth surfacing as risk evidence (everything but routine activity)
         notable = [e for e in timeline if not e["risk_note"].startswith("Routine")]
+
+        # structured evidence: one item per notable event ('TL' namespace so the
+        # timeline's transaction IDs don't collide with the analysis agent's)
+        coll = EvidenceCollector(prefix="TL")
+        for e in notable:
+            coll.add("transaction", e.get("transaction_id") or e["time"], "risk_note",
+                     e["amount"], e["risk_note"])
         first, last = (ordered[0].get("date_time"), ordered[-1].get("date_time")) if ordered else (None, None)
         summary = (f"{len(timeline)} transactions from {first} to {last}; "
                    f"{near_count} near-threshold, {len(notable)} notable events."
@@ -110,6 +119,7 @@ class TransactionTimelineAgent(BaseAgent):
         }
         return {
             "timeline_findings": findings,
+            "evidence": coll.items,
             "audit_rationales": [self.trace(
                 summary, 0.95,
                 evidence=[f"{e['time']}: {e['risk_note']}" for e in notable] or ["No notable events."])],

@@ -15,6 +15,7 @@ from rapidfuzz import fuzz
 
 from app.agents.base import BaseAgent
 from app.core.state import stamp
+from app.core.evidence import EvidenceCollector
 from app.rules.rule_engine import get_rules
 from app.rules.country_risk import high_risk_countries
 from app.tools.db import get_watchlist, get_customer
@@ -86,11 +87,18 @@ class WatchlistScreeningAgent(BaseAgent):
                          f"entities. No matches above {review_threshold}%. Clear.")
             confidence = 0.9
 
+        # ---- structured evidence: one item per name match ----
+        coll = EvidenceCollector()
+        ev_ids = [coll.add("watchlist", m["matched_entity"], "match_score", m["score"],
+                           f"{m['party']} '{m['searched_name']}' ~ '{m['matched_entity']}' "
+                           f"({m['list_type']})") for m in all_matches]
+
         return {
             "watchlist_findings": {
                 "customer_screening": screenings["customer"],
                 "recipient_screening": screenings["recipient"],
                 "required_action": required_action,
+                "evidence_ids": ev_ids,
                 # --- compat fields consumed by the rule engine / scoring / display ---
                 "is_match": is_match,
                 "best_match": overall_best["matched_entity"] if overall_best else None,
@@ -101,6 +109,7 @@ class WatchlistScreeningAgent(BaseAgent):
                 "all_matches": all_matches,
                 "screened_parties": list(parties.keys()),
             },
+            "evidence": coll.items,
             "audit_rationales": [self.trace(
                 reasoning, confidence,
                 evidence=[f"{m['party']} '{m['searched_name']}' ~ '{m['matched_entity']}' "

@@ -41,6 +41,7 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
     ai = pkg.get("ai_recommendation", {})
     hd = human_review or pkg.get("human_analyst_decision", {})
     attachments = pkg.get("attachments", [])
+    register = pkg.get("evidence_register", [])
 
     def tx_line(t: dict) -> str:
         tag = " [NEW recipient]" if t.get("new_recipient") else ""
@@ -84,7 +85,10 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
          _kv(hd, "decision", "analyst_id", "note", "final_risk_level")
          or ["Pending human analyst review."]),
         ("12. Attachments / Supporting Evidence",
-         list(attachments) or ["None on file."]),
+         list(attachments)
+         + [f"[{e['evidence_id']}] {e['source_type']}/{e['source_id']}.{e['field']} "
+            f"= {e['value']} -- {e['description']}" for e in register]
+         or ["None on file."]),
     ]
 
 
