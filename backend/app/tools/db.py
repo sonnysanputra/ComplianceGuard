@@ -8,9 +8,6 @@ data. Pure data lookups (no LLM), so they cost nothing in model terms.
 import os
 from supabase import create_client, Client
 
-# High-risk jurisdictions -- a small constant, no need for a DB table
-HIGH_RISK_COUNTRIES = {"Cambodia", "North Korea", "Iran", "Myanmar"}
-
 _client: Client | None = None
 
 

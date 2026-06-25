@@ -1,0 +1,7 @@
+# High-risk jurisdictions and their risk level. Edit + POST /rules/reload.
+# In production this would be sourced from FATF / sanctions-list feeds.
+countries:
+  Cambodia: High
+  Myanmar: High
+  Iran: Critical
+  North Korea: Critical

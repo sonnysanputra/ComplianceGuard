@@ -11,9 +11,9 @@ for name screening; an LLM would only add noise here.
 from rapidfuzz import fuzz
 
 from app.agents.base import BaseAgent
-from app.config.rules import get_rules
 from app.core.state import stamp
-from app.tools.db import get_watchlist, get_customer, HIGH_RISK_COUNTRIES
+from app.rules.rule_engine import get_rules, high_risk_countries
+from app.tools.db import get_watchlist, get_customer
 
 
 class WatchlistScreeningAgent(BaseAgent):
@@ -58,7 +58,7 @@ class WatchlistScreeningAgent(BaseAgent):
             lt = m["list_type"]
             per_list[lt] = max(per_list.get(lt, 0), m["score"])
 
-        high_risk_country = alert.get("country", "") in HIGH_RISK_COUNTRIES
+        high_risk_country = alert.get("country", "") in high_risk_countries()
 
         verdict = ("Confirmed match - escalate" if is_match else
                    "Possible match - manual review" if matches else

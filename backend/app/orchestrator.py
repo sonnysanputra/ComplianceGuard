@@ -24,7 +24,7 @@ INVESTIGATION = ["transaction_analysis", "kyc_profile",
 MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
 
 from app.core.state import CaseState
-from app.config.rules import get_rules
+from app.rules.rule_engine import get_rules
 from app.agents.alert_intake import alert_intake
 from app.agents.data_quality import data_quality
 from app.agents.transaction_analysis import transaction_analysis

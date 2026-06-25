@@ -99,10 +99,11 @@ def main():
 
     factors = snap.get("risk_factors", [])
     if factors:
-        print("\nRisk Factor Breakdown:")
+        print("\nTriggered AML Rules (rule engine):")
         for f in factors:
             sign = "+" if f["points"] >= 0 else ""
-            print(f"   {sign}{f['points']:>3}  {f['factor']:<28} — {f['evidence']}")
+            print(f"   [{f.get('rule_id', '')}] {sign}{f['points']:>3}  "
+                  f"{f.get('name', '')} ({f.get('severity', '')}) — {f['evidence']}")
         raw = sum(f["points"] for f in factors)
         if raw != snap.get("rule_score"):
             print(f"   ───  raw total {raw}, capped to {snap.get('rule_score')}/100")

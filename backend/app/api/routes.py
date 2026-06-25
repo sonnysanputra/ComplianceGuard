@@ -35,7 +35,7 @@ logger = logging.getLogger("compliguard.api")
 
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
-from app.config.rules import get_rules, reload_rules
+from app.rules.rule_engine import get_rules, reload_rules
 from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
@@ -244,8 +244,9 @@ def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
         ]),
     ]
     if snap.get("risk_factors"):
-        sections.append(("Risk Factor Breakdown", [
-            f"{f.get('points'):+} {f.get('factor')} - {f.get('evidence')}"
+        sections.append(("Triggered AML Rules", [
+            f"[{f.get('rule_id', '')}] {f.get('points'):+} {f.get('name')} "
+            f"({f.get('severity', '')}) - {f.get('evidence')}"
             for f in snap["risk_factors"]]))
     sections.append(("Agent Findings", [
         f"Typology: {tf.get('typology')}",

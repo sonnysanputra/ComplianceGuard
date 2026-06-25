@@ -8,8 +8,9 @@ the judgment, while the rule score keeps it grounded and explainable.
 """
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
-from app.config.rules import get_rules
 from app.core.state import stamp
+from app.rules.rule_engine import evaluate_aml_rules, get_rules
+from app.tools.db import get_customer, get_transactions
 
 SYSTEM_PROMPT = """You are an AML risk officer making an independent risk assessment \
 of a flagged case.
@@ -53,69 +54,24 @@ class RiskScoringAgent(BaseAgent):
                                f"({', '.join(failed)} failed)"),
             }
 
-        tfind = state["transaction_findings"]
-        tf = tfind["flags"]
-        typology = tfind.get("typology", "unknown")
         kf = state["kyc_findings"]
         wf = state["watchlist_findings"]
         mem = state.get("memory_findings", {})
         policies = state.get("retrieved_policies", [])
         alert = state["alert"]
 
-        # ---- 1. Deterministic baseline + an explainable FACTOR BREAKDOWN ----
-        # Each triggered factor records its points and the evidence behind it,
-        # so the score is fully justifiable (a compliance requirement).
-        factors = []
+        # ---- 1. Deterministic detection + scoring is delegated to the RULE ENGINE ----
+        # The engine returns the triggered AML rules (id, name, points, severity,
+        # evidence) plus the total rule score and typology -- a fully justifiable
+        # breakdown. Risk scoring only blends this with the LLM and decides routing.
+        customer = get_customer(alert["customer_id"])
+        transactions = get_transactions(alert["customer_id"])
+        result = evaluate_aml_rules(customer, transactions, wf, mem, alert)
 
-        def add(triggered, factor, points, evidence):
-            if triggered:
-                factors.append({"factor": factor, "points": points, "evidence": evidence})
-
-        total_recent = tfind.get("total_recent")
-        window = tfind.get("window_hours")
-        distinct = tfind.get("distinct_recipients")
-        country = alert.get("country")
-
-        # all risk points come from app/config/risk_rules.yaml (configurable per institution)
-        R = get_rules()
-        threshold = R["structuring"]["internal_review_threshold"]
-
-        add(tf.get("money_mule"), "Money mule pattern", R["money_mule"]["risk_points"],
-            f"Inbound funds rapidly forwarded to {distinct} new recipient(s)")
-        add(tf.get("structuring"), "Structuring pattern", R["structuring"]["risk_points"],
-            f"{alert.get('num_transactions')} transfers below the RM{threshold:,} "
-            f"internal review threshold (RM{total_recent} total)")
-        add(tf.get("rapid_dispersion"), "Layering / dispersion", R["layering_dispersion"]["risk_points"],
-            f"Funds dispersed across {distinct} new recipients within {window}h")
-        add(tf.get("new_overseas_recipient"), "High-risk overseas transfer", R["high_risk_overseas"]["risk_points"],
-            f"Transfer to high-risk jurisdiction: {country}")
-        add(tf.get("volume_spike"), "Volume spike", R["volume_spike"]["risk_points"],
-            f"Burst of RM{total_recent} far exceeds the customer's baseline")
-        add(kf.get("income_mismatch"), "Income mismatch", R["kyc"]["risk_points"],
-            f"RM{kf.get('burst_total')} burst vs RM{kf.get('declared_income')} declared "
-            f"income ({kf.get('income_ratio')}x)")
-        add(wf.get("is_match"), "Watchlist match", R["watchlist"]["match_risk_points"],
-            f"Match: {wf.get('best_match')} ({wf.get('match_score')}%, {wf.get('list_type')})")
-        add(wf.get("high_risk_country"), "High-risk country", R["watchlist"]["high_risk_country_points"],
-            f"Recipient country is {country}")
-        add(kf.get("previous_alerts", 0) > 0, "Prior alert history", R["history"]["prior_alert_points"],
-            f"{kf.get('previous_alerts')} prior alert(s) on the customer's KYC record")
-        add(mem.get("previous_escalations", 0) > 0, "Repeat offender (memory)", R["memory"]["prior_escalation_points"],
-            f"{mem.get('previous_escalations')} prior escalation(s) for this customer")
-        add(mem.get("same_recipient_seen_before"), "Repeat recipient (memory)", R["memory"]["repeat_recipient_points"],
-            "Same recipient seen in a previous investigation")
-
-        rule_score = sum(f["points"] for f in factors)
-
-        # benign history lowers the score (a negative factor)
-        if mem.get("memory_risk_direction") == "reduce":
-            reduction = R["false_positive"]["risk_reduction_points"]
-            factors.append({"factor": "Benign history (memory)", "points": -reduction,
-                            "evidence": f"{mem.get('previous_false_positives')} prior "
-                                        f"false positive(s), no escalations"})
-            rule_score -= reduction
-
-        rule_score = max(0, min(rule_score, 100))
+        tf = result.flags
+        typology = result.typology
+        rule_score = result.total_rule_score
+        factors = [r.to_dict() for r in result.triggered_rules]
 
         # ---- 2. Qwen's independent AI risk assessment ----
         assessment = self.think(
@@ -156,7 +112,7 @@ class RiskScoringAgent(BaseAgent):
         key_drivers = assessment.get("key_drivers", [])
         confidence = float(assessment.get("confidence", 85)) / 100.0
 
-        escalate_at = R["scoring"]["escalation_threshold"]
+        escalate_at = get_rules()["scoring"]["escalation_threshold"]
         rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= escalate_at
                else "Monitor / close as low risk")
 

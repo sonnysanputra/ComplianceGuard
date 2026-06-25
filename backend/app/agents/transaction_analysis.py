@@ -7,17 +7,15 @@ those facts to identify the AML typology and red flags. Deterministic flags are
 kept as a grounding signal + safety fallback if the LLM response can't be parsed.
 """
 
-from datetime import datetime
-
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
-from app.config.rules import get_rules
 from app.core.state import stamp
-from app.tools.db import get_transactions, HIGH_RISK_COUNTRIES
+from app.rules.rule_engine import detect_transaction_typology
+from app.tools.db import get_transactions
 
-# Demo / internal-review thresholds come from app/config/risk_rules.yaml. In
-# production these must come from the institution's AML rule configuration and
-# must NOT be treated as a legal reporting threshold -- suspicion is assessed on
-# customer knowledge, economic purpose, and risk context, not amount alone.
+# Deterministic detection is owned by the AML rule engine (app/rules/). This
+# agent calls the engine for the typology, then has Qwen reason about it. The
+# engine's thresholds are demo/internal-review values, NOT a legal reporting
+# threshold -- suspicion is contextual, not amount alone.
 
 SYSTEM_PROMPT = """You are a senior AML transaction analyst at a bank, reviewing a \
 flagged customer's activity.
@@ -43,68 +41,30 @@ class TransactionAnalysisAgent(BaseAgent):
     label = "Transaction Analysis Agent"
 
     def run(self, state: dict) -> dict:
-        rules = get_rules()
-        s, mm = rules["structuring"], rules["money_mule"]
-        lay, vs = rules["layering_dispersion"], rules["volume_spike"]
-
         cid = state["alert"]["customer_id"]
-        txns = get_transactions(cid)                       # tool call, no cost
+        txns = get_transactions(cid)                        # tool call, no cost
 
-        # ---- 1. Aggregate objective FACTS (not detection -- just arithmetic) ----
-        outgoing = [t for t in txns if t.get("direction", "out") == "out"]
-        incoming = [t for t in txns if t.get("direction") == "in"]
-        recent = [t for t in outgoing if t["is_new_recipient"]]
-        total_recent = sum(t["amount"] for t in recent)
-        distinct_recipients = len({t["recipient"] for t in recent})
-        times = sorted(datetime.fromisoformat(t["date_time"]) for t in recent)
-        window_hours = (times[-1] - times[0]).total_seconds() / 3600 if len(times) > 1 else 0
-        historical = [t for t in outgoing if not t["is_new_recipient"]]
-        avg_historical = (sum(t["amount"] for t in historical) / len(historical)
-                          if historical else 0)
-        incoming_total = sum(t["amount"] for t in incoming)
-        amounts_recent = [t["amount"] for t in recent]
-        countries = sorted({t["country"] for t in recent})
-
+        # ---- 1. Deterministic detection is delegated to the RULE ENGINE ----
+        det = detect_transaction_typology(txns)
+        typology = det["typology"]
         facts = {
-            "new_recipient_transfers": len(recent),
-            "total_to_new_recipients": total_recent,
-            "distinct_new_recipients": distinct_recipients,
-            "window_hours": round(window_hours, 1),
-            "individual_amounts": amounts_recent,
-            "incoming_total": incoming_total,
-            "customer_avg_transaction": round(avg_historical),
-            "destination_countries": countries,
-            "internal_review_threshold": s["internal_review_threshold"],
-            "high_risk_countries": sorted(HIGH_RISK_COUNTRIES),
+            "new_recipient_transfers": len(det["amounts_recent"]),
+            "total_to_new_recipients": det["total_recent"],
+            "distinct_new_recipients": det["distinct_recipients"],
+            "window_hours": det["window_hours"],
+            "individual_amounts": det["amounts_recent"],
+            "incoming_total": det["incoming_total"],
+            "customer_avg_transaction": det["avg_historical"],
+            "destination_countries": det["destination_countries"],
         }
 
-        # ---- 2. Deterministic flags (thresholds from app/config/risk_rules.yaml) ----
-        rule_flags = {
-            "structuring": (
-                sum(1 for a in amounts_recent
-                    if s["lower_bound_ratio"] * s["internal_review_threshold"]
-                    <= a < s["internal_review_threshold"]) >= s["min_transactions"]
-                and window_hours <= s["window_hours"]),
-            "money_mule": (bool(incoming)
-                           and incoming_total >= mm["incoming_min_amount"]
-                           and len(recent) >= mm["min_new_recipients"]
-                           and total_recent >= mm["outgoing_ratio_min"] * max(incoming_total, 1)),
-            "rapid_dispersion": (distinct_recipients >= lay["min_recipients"]
-                                 and window_hours <= lay["window_hours"]),
-            "new_overseas_recipient": any(c in HIGH_RISK_COUNTRIES for c in countries),
-            "volume_spike": total_recent > vs["baseline_multiplier"] * max(avg_historical, 1),
-        }
-
-        # Rules own the typology LABEL (reliable). Qwen owns the REASONING.
-        typology = self._rule_typology(rule_flags)
-
-        # ---- 3. Qwen reasons about the detected pattern (grounded in signals) ----
+        # ---- 2. Qwen reasons about the detected pattern (grounded in signals) ----
         analysis = self.think(
             system=SYSTEM_PROMPT,
             prompt=(
                 f"DETECTED TYPOLOGY (from rules): {typology}\n\n"
                 f"TRANSACTION FACTS:\n{facts}\n\n"
-                f"COMPUTED SIGNALS (true = triggered):\n{rule_flags}\n\n"
+                f"COMPUTED SIGNALS (true = triggered):\n{det['flags']}\n\n"
                 "Return ONLY this JSON (each red flag gets its own confidence):\n"
                 "{\n"
                 '  "reasoning": "<2-3 sentences on why this pattern is or is not suspicious>",\n'
@@ -124,27 +84,17 @@ class TransactionAnalysisAgent(BaseAgent):
 
         return {
             "transaction_findings": {
-                "flags": rule_flags,            # reliable signal for risk scoring
+                "flags": det["flags"],          # reliable signal for risk scoring
                 "typology": typology,           # rule-detected, Qwen-explained
                 "llm_red_flags": llm_flags,
-                "total_recent": total_recent,
-                "distinct_recipients": distinct_recipients,
-                "window_hours": round(window_hours, 1),
+                "total_recent": det["total_recent"],
+                "distinct_recipients": det["distinct_recipients"],
+                "window_hours": det["window_hours"],
                 "summary": reasoning,
             },
             "cot_traces": [self.trace(reasoning, confidence, output={"typology": typology})],
             "audit": stamp(f"{self.label} detected typology: {typology}"),
         }
-
-    @staticmethod
-    def _rule_typology(flags: dict) -> str:
-        """Deterministic typology classification -- reliable, so it owns the label."""
-        if flags["money_mule"]:             return "money mule"
-        if flags["structuring"]:            return "structuring"
-        if flags["rapid_dispersion"]:       return "layering/dispersion"
-        if flags["new_overseas_recipient"]: return "high-risk overseas transfer"
-        if flags["volume_spike"]:           return "volume spike"
-        return "none"
 
 
 transaction_analysis = TransactionAnalysisAgent()

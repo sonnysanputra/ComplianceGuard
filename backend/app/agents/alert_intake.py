@@ -14,7 +14,7 @@ human-readable justification and a confidence score.
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
-from app.tools.db import HIGH_RISK_COUNTRIES
+from app.rules.rule_engine import high_risk_countries
 
 SYSTEM_PROMPT = """You are an AML intake officer triaging an incoming suspicious-activity \
 alert before investigation.
@@ -43,7 +43,7 @@ class AlertIntakeAgent(BaseAgent):
                     "Medium" if amount >= 10_000 else "Low")
 
         # priority: P1 (act now) .. P4 (routine)
-        overseas = recipient_country in HIGH_RISK_COUNTRIES
+        overseas = recipient_country in high_risk_countries()
         if amount >= 25_000 or overseas:
             priority = "P1"
         elif amount >= 10_000:
