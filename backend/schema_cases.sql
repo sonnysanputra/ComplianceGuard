@@ -95,16 +95,26 @@ create table if not exists watchlist_matches (
     created_at            timestamptz default now()
 );
 
--- The human-in-the-loop decisions
+-- The human-in-the-loop decisions (incl. analyst feedback for learning)
 create table if not exists human_decisions (
-    id               bigserial primary key,
-    case_id          text references cases(case_id),
-    decision         text,       -- approve | reject | edit | request_more_info
-    analyst_id       text,
-    notes            text,       -- reason / requested info
-    final_risk_level text,       -- analyst override of the risk level
-    created_at       timestamptz default now()
+    id                     bigserial primary key,
+    case_id                text references cases(case_id),
+    decision               text,    -- approve | reject | edit | request_more_info
+    analyst_id             text,
+    notes                  text,    -- reason / requested info
+    final_risk_level       text,    -- analyst override of the risk level
+    analyst_agrees_with_ai boolean, -- did the analyst agree with the AI's assessment?
+    corrected_typology     text,    -- the typology the analyst says it really was
+    corrected_reason       text,    -- the analyst's corrected rationale
+    feedback_tags          jsonb,   -- e.g. ["false_positive","wrong_typology","good_sar_draft"]
+    created_at             timestamptz default now()
 );
+
+-- For existing installs:
+alter table human_decisions add column if not exists analyst_agrees_with_ai boolean;
+alter table human_decisions add column if not exists corrected_typology     text;
+alter table human_decisions add column if not exists corrected_reason       text;
+alter table human_decisions add column if not exists feedback_tags          jsonb;
 
 -- ====================================================================
 -- Full auditability: evidence, triggered rules, policy citations, and

@@ -192,11 +192,27 @@ def main():
             if decision in ("reject", "request_more_info"):
                 note = input("Reason / info needed: ").strip() or None
 
-            payload = {"decision": decision, "analyst_id": "cli-analyst", "analyst_note": note}
+            # analyst feedback for learning (Enter to skip)
+            agrees = None
+            corrected_typology = None
+            tags = None
+            if decision in ("approve", "reject", "edit"):
+                ans = input("Do you agree with the AI assessment? (y/n, Enter=skip): ").strip().lower()
+                agrees = True if ans == "y" else False if ans == "n" else None
+                tag_in = input("Feedback tags (comma-separated, e.g. false_positive,wrong_typology): ").strip()
+                tags = [t.strip() for t in tag_in.split(",") if t.strip()] or None
+                if tags and "wrong_typology" in tags:
+                    corrected_typology = input("  Corrected typology: ").strip() or None
+
+            payload = {"decision": decision, "analyst_id": "cli-analyst", "analyst_note": note,
+                       "analyst_agrees_with_ai": agrees, "corrected_typology": corrected_typology,
+                       "feedback_tags": tags}
             result = graph.invoke(Command(resume=payload), config)
             final = graph.get_state(config).values
             persist_decision(final["alert"]["id"], decision,
-                             analyst_id="cli-analyst", notes=note)
+                             analyst_id="cli-analyst", notes=note,
+                             analyst_agrees_with_ai=agrees,
+                             corrected_typology=corrected_typology, feedback_tags=tags)
 
             if decision == "request_more_info" and "__interrupt__" in result:
                 print("\n🔁 Re-investigating with the request on record...")

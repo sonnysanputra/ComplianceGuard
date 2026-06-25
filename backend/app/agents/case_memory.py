@@ -46,17 +46,34 @@ class CaseMemoryAgent(BaseAgent):
         human_overrides = sum(1 for d in decisions if d.get("decision") == "reject")
         baseline_prior_alerts = cust.get("previous_alerts", 0) if cust else 0
 
+        # --- analyst feedback learning: did a human previously disagree with the AI? ---
+        def tags(d):
+            return d.get("feedback_tags") or []
+        analyst_fp_overrides = sum(
+            1 for d in decisions
+            if "false_positive" in tags(d) or d.get("analyst_agrees_with_ai") is False)
+        analyst_corrections = [d["corrected_typology"] for d in decisions
+                               if d.get("corrected_typology")]
+        feedback_tags = sorted({t for d in decisions for t in tags(d)})
+
         # --- direction this memory should push the risk score ---
-        if previous_escalations > 0 or same_recipient_seen_before:
+        # A confirmed escalation dominates; otherwise an explicit analyst false-positive
+        # override teaches the system to LOWER confidence on similar cases.
+        if previous_escalations > 0:
             direction = "increase"
-        elif previous_false_positives >= 2 and previous_escalations == 0:
+        elif analyst_fp_overrides > 0:
+            direction = "reduce"
+        elif same_recipient_seen_before:
+            direction = "increase"
+        elif previous_false_positives >= 2:
             direction = "reduce"
         else:
             direction = "neutral"
 
         signal = self._signal(previous_cases_found, previous_escalations,
                               previous_false_positives, same_recipient_seen_before,
-                              human_overrides, baseline_prior_alerts)
+                              human_overrides, baseline_prior_alerts,
+                              analyst_fp_overrides, analyst_corrections)
 
         # DB facts are certain, so confidence is high
         confidence = 0.9
@@ -73,6 +90,9 @@ class CaseMemoryAgent(BaseAgent):
         if previous_false_positives:
             ev_ids.append(coll.add("memory", cid, "previous_false_positives", previous_false_positives,
                                    f"{previous_false_positives} prior false positive(s) for this customer"))
+        if analyst_fp_overrides:
+            ev_ids.append(coll.add("memory", cid, "analyst_false_positive_feedback", analyst_fp_overrides,
+                                   "Analyst previously overrode similar AI findings as a false positive"))
 
         return {
             "memory_findings": {
@@ -82,6 +102,9 @@ class CaseMemoryAgent(BaseAgent):
                 "same_recipient_seen_before": same_recipient_seen_before,
                 "human_overrides": human_overrides,
                 "baseline_prior_alerts": baseline_prior_alerts,
+                "analyst_false_positive_feedback": analyst_fp_overrides,
+                "analyst_corrections": analyst_corrections,
+                "analyst_feedback_tags": feedback_tags,
                 "memory_risk_direction": direction,
                 "memory_risk_signal": signal,
                 "evidence_ids": ev_ids,
@@ -95,7 +118,15 @@ class CaseMemoryAgent(BaseAgent):
         }
 
     @staticmethod
-    def _signal(cases, escalations, false_pos, same_recipient, overrides, baseline):
+    def _signal(cases, escalations, false_pos, same_recipient, overrides, baseline,
+                analyst_fp=0, corrections=None):
+        # an explicit analyst false-positive override is the strongest learning signal
+        if analyst_fp:
+            msg = ("Previous AI recommendation was overridden by an analyst as a false "
+                   "positive. Reduce confidence for similar cases.")
+            if corrections:
+                msg += f" Analyst corrected the typology to: {', '.join(sorted(set(corrections)))}."
+            return msg
         if cases == 0 and baseline == 0:
             return "No prior history for this customer."
         parts = []

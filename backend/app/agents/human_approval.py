@@ -38,12 +38,17 @@ def human_approval(state: dict) -> dict:
     updates = {
         "human_decision": decision,
         "human_review": {
-            "decision":         decision,
-            "analyst_id":       analyst_id,
-            "analyst_note":     note,
-            "final_risk_level": payload.get("final_risk_level"),
-            "edited":           bool(payload.get("edited_sar_draft")),
-            "rerun_targets":    payload.get("rerun_targets"),
+            "decision":               decision,
+            "analyst_id":             analyst_id,
+            "analyst_note":           note,
+            "final_risk_level":       payload.get("final_risk_level"),
+            "edited":                 bool(payload.get("edited_sar_draft")),
+            "rerun_targets":          payload.get("rerun_targets"),
+            # analyst feedback -> feeds learning in the Case Memory Agent
+            "analyst_agrees_with_ai": payload.get("analyst_agrees_with_ai"),
+            "corrected_typology":     payload.get("corrected_typology"),
+            "corrected_reason":       payload.get("corrected_reason"),
+            "feedback_tags":          payload.get("feedback_tags"),
         },
         "a2a_messages": [{"from": "human_approval", "status": "ok", "confidence": 1.0}],
     }

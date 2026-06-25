@@ -117,6 +117,11 @@ class Decision(BaseModel):
     edited_sar_draft: Optional[str] = None
     final_risk_level: Optional[str] = None
     rerun_targets: Optional[list[str]] = None
+    # analyst feedback (drives learning in the Case Memory Agent)
+    analyst_agrees_with_ai: Optional[bool] = None
+    corrected_typology: Optional[str] = None
+    corrected_reason: Optional[str] = None
+    feedback_tags: Optional[list[str]] = None   # e.g. ["false_positive","wrong_typology"]
 
 
 class CaseSnapshot(BaseModel):
@@ -566,7 +571,11 @@ def decide(case_id: str, body: Decision):
     cfg = {"configurable": {"thread_id": case_id}}
     graph.invoke(Command(resume=body.model_dump()), cfg)
     persist_decision(case_id, body.decision, analyst_id=body.analyst_id,
-                     notes=body.analyst_note, final_risk_level=body.final_risk_level)
+                     notes=body.analyst_note, final_risk_level=body.final_risk_level,
+                     analyst_agrees_with_ai=body.analyst_agrees_with_ai,
+                     corrected_typology=body.corrected_typology,
+                     corrected_reason=body.corrected_reason,
+                     feedback_tags=body.feedback_tags)
     snap = _snapshot(case_id)
     persist_case(graph.get_state(cfg).values, status=snap["status"])
     return snap

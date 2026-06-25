@@ -182,13 +182,22 @@ def persist_case(state: dict, status: str) -> bool:
 
 
 def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
-                     notes: str | None = None, final_risk_level: str | None = None) -> bool:
-    """Record a structured human decision and update the case status."""
+                     notes: str | None = None, final_risk_level: str | None = None,
+                     analyst_agrees_with_ai: bool | None = None,
+                     corrected_typology: str | None = None,
+                     corrected_reason: str | None = None,
+                     feedback_tags: list | None = None) -> bool:
+    """Record a structured human decision (incl. analyst feedback for learning)
+    and update the case status."""
     try:
         db = client()
         db.table("human_decisions").insert({
             "case_id": case_id, "decision": decision, "analyst_id": analyst_id,
             "notes": notes, "final_risk_level": final_risk_level,
+            "analyst_agrees_with_ai": analyst_agrees_with_ai,
+            "corrected_typology": corrected_typology,
+            "corrected_reason": corrected_reason,
+            "feedback_tags": feedback_tags,
         }).execute()
         # map the decision onto the lifecycle (approve -> APPROVED_FOR_STR_REVIEW, etc.)
         status = status_for_decision(decision)
