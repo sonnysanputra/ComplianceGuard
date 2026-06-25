@@ -90,6 +90,16 @@ def main():
                            for p in pols)
         print(f"  Policies   : {cites}")
 
+    tl = (snap.get("timeline_findings") or {}).get("timeline", [])
+    if tl:
+        print("\n" + "-" * 70)
+        print("TRANSACTION TIMELINE:")
+        print("-" * 70)
+        for e in tl:
+            arrow = "IN <-" if str(e.get("direction")).upper() == "IN" else "OUT->"
+            print(f"  {e.get('time')}  {arrow} RM{e.get('amount', 0):>7,}  "
+                  f"{str(e.get('recipient'))[:22]:<22} {e.get('risk_note')}")
+
     errors = snap.get("errors", [])
     if errors:
         print("\n⚠  TOOL FAILURE(S) — case forced to manual review:")

@@ -122,6 +122,7 @@ class CaseSnapshot(BaseModel):
     triage: Optional[dict] = None
     data_quality: Optional[dict] = None
     transaction_findings: Optional[dict] = None
+    timeline_findings: Optional[dict] = None
     kyc_findings: Optional[dict] = None
     watchlist_findings: Optional[dict] = None
     memory_findings: Optional[dict] = None
@@ -211,6 +212,7 @@ def _snapshot(case_id: str) -> dict:
         "triage": v.get("triage"), "data_quality": v.get("data_quality"),
         "fp_review": v.get("fp_review"),
         "transaction_findings": v.get("transaction_findings"),
+        "timeline_findings": v.get("timeline_findings"),
         "kyc_findings": v.get("kyc_findings"),
         "watchlist_findings": v.get("watchlist_findings"),
         "memory_findings": v.get("memory_findings"),
@@ -276,6 +278,12 @@ def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
         f"Watchlist: {wl.get('verdict')} (best {wl.get('match_score')}% on {wl.get('list_type')})",
         f"Memory: {mem.get('memory_risk_signal')}",
     ]))
+    tl = (snap.get("timeline_findings") or {}).get("timeline")
+    if tl:
+        sections.append(("Transaction Timeline", [
+            f"{e.get('time')}  |  {e.get('direction')} RM{e.get('amount', 0):,} "
+            f"{e.get('recipient')} ({e.get('country')}) - {e.get('risk_note')}"
+            for e in tl]))
     if snap.get("retrieved_policies"):
         sections.append(("Policy References", [
             f"{p.get('policy_id')}: {p.get('title')} (section {p.get('section')})"
@@ -508,6 +516,15 @@ def case_audit(case_id: str):
     v = graph.get_state({"configurable": {"thread_id": case_id}}).values
     timeline = sorted(v.get("audit", [])) if v else []
     return {"case_id": case_id, "timeline": timeline, "events": get_case_events(case_id)}
+
+
+@app.get("/case/{case_id}/timeline")
+def case_timeline(case_id: str):
+    """The chronological, annotated transaction timeline (for the investigation page)."""
+    v = graph.get_state({"configurable": {"thread_id": case_id}}).values
+    tf = (v or {}).get("timeline_findings") or {}
+    return {"case_id": case_id, "timeline": tf.get("timeline", []),
+            "notable_events": tf.get("notable_events", []), "summary": tf.get("summary")}
 
 
 @app.get("/case/{case_id}/sar", response_model=SARResponse)

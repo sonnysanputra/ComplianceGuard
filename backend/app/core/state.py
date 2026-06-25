@@ -18,6 +18,7 @@ class CaseState(TypedDict, total=False):
     data_quality: dict       # completeness gate: missing fields, can we proceed?
     memory_findings: dict    # long-term memory: this customer's history
     transaction_findings: dict
+    timeline_findings: dict   # chronological, annotated event timeline
     kyc_findings: dict
     watchlist_findings: dict
     retrieved_policies: list

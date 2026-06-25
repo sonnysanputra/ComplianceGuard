@@ -44,10 +44,12 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
 
     def tx_line(t: dict) -> str:
         tag = " [NEW recipient]" if t.get("new_recipient") else ""
-        arrow = "IN <-" if t.get("direction") == "in" else "OUT ->"
-        return (f"{t.get('date', '-')}  |  {arrow} RM{t.get('amount', 0):,}  "
-                f"{t.get('recipient', '-')} ({t.get('country', '-')}, "
-                f"{t.get('type', '-')}){tag}")
+        arrow = "IN <-" if str(t.get("direction", "")).upper() == "IN" else "OUT ->"
+        when = t.get("time") or t.get("date", "-")
+        ttype = t.get("transaction_type") or t.get("type", "-")
+        note = f"  -- {t['risk_note']}" if t.get("risk_note") else ""
+        return (f"{when}  |  {arrow} RM{t.get('amount', 0):,}  "
+                f"{t.get('recipient', '-')} ({t.get('country', '-')}, {ttype}){tag}{note}")
 
     return [
         ("1. Case Information",

@@ -102,13 +102,20 @@ class SARDraftingAgent(BaseAgent):
         cs = wl.get("customer_screening") or {}
         rs = wl.get("recipient_screening") or {}
 
-        timeline = sorted(
-            ({"date": t.get("date_time"), "amount": t.get("amount"),
-              "recipient": t.get("recipient"), "country": t.get("country"),
-              "type": t.get("transaction_type"), "direction": t.get("direction"),
-              "new_recipient": t.get("is_new_recipient")}
-             for t in txns),
-            key=lambda t: t["date"] or "")
+        # Prefer the Transaction Timeline Agent's annotated timeline (with risk
+        # notes); fall back to a bare chronological list if it didn't run.
+        tl = (state.get("timeline_findings") or {}).get("timeline")
+        if tl:
+            timeline = tl
+        else:
+            timeline = sorted(
+                ({"time": t.get("date_time"), "amount": t.get("amount"),
+                  "recipient": t.get("recipient"), "country": t.get("country"),
+                  "transaction_type": t.get("transaction_type"),
+                  "direction": (t.get("direction") or "out").upper(),
+                  "new_recipient": t.get("is_new_recipient")}
+                 for t in txns),
+                key=lambda t: t["time"] or "")
 
         attachments = ["Customer KYC file (system of record)",
                        "Transaction logs (core banking)"]

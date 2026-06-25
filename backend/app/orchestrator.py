@@ -18,8 +18,8 @@ Flow (mirrors the proposal's high-level workflow):
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-# the five investigation agents that run in parallel
-INVESTIGATION = ["transaction_analysis", "kyc_profile",
+# the investigation agents that run in parallel
+INVESTIGATION = ["transaction_analysis", "transaction_timeline", "kyc_profile",
                  "watchlist_screening", "policy_rag", "case_memory"]
 MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
 
@@ -28,6 +28,7 @@ from app.rules.rule_engine import get_rules
 from app.agents.alert_intake import alert_intake
 from app.agents.data_quality import data_quality
 from app.agents.transaction_analysis import transaction_analysis
+from app.agents.transaction_timeline import transaction_timeline
 from app.agents.kyc_profile import kyc_profile
 from app.agents.watchlist_screening import watchlist_screening
 from app.agents.policy_rag import policy_rag
@@ -91,6 +92,7 @@ def build_graph():
     g.add_node("alert_intake", alert_intake)
     g.add_node("data_quality", data_quality)
     g.add_node("transaction_analysis", transaction_analysis)
+    g.add_node("transaction_timeline", transaction_timeline)
     g.add_node("kyc_profile", kyc_profile)
     g.add_node("watchlist_screening", watchlist_screening)
     g.add_node("policy_rag", policy_rag)

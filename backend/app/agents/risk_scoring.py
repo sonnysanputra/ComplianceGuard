@@ -127,7 +127,10 @@ class RiskScoringAgent(BaseAgent):
             "risk_explanation": explanation,
             "audit_rationales": [self.trace(
                 explanation, confidence,
-                evidence=[f"{f.get('name')}: {f.get('evidence')}" for f in factors],
+                # evidence = the triggered rules + the notable timeline events
+                evidence=[f"{f.get('name')}: {f.get('evidence')}" for f in factors]
+                + [f"{e['time']}: {e['risk_note']}"
+                   for e in (state.get("timeline_findings") or {}).get("notable_events", [])],
                 output={"final": final_score, "rule": rule_score,
                         "ai": ai_score, "level": risk_level, "factors": factors})],
             "audit": stamp(f"{self.label} scored {final_score}/100 "
