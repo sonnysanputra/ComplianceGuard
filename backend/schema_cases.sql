@@ -152,6 +152,7 @@ create table if not exists policy_citations (
     id              bigserial primary key,
     case_id         text references cases(case_id),
     policy_id       text,
+    chunk_id        text,          -- the specific section chunk that was cited
     title           text,
     section         text,
     category        text,
@@ -160,6 +161,7 @@ create table if not exists policy_citations (
     rerank_score    numeric,
     created_at      timestamptz default now()
 );
+alter table policy_citations add column if not exists chunk_id text;
 
 -- Append-only status transitions (who changed it, why, and when)
 create table if not exists case_status_history (

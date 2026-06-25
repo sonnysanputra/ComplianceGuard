@@ -111,6 +111,7 @@ def persist_case(state: dict, status: str) -> bool:
         if policies:
             db.table("policy_citations").insert([{
                 "case_id": case_id, "policy_id": p.get("policy_id"),
+                "chunk_id": p.get("chunk_id"),
                 "title": p.get("title"), "section": p.get("section"),
                 "category": p.get("category"),
                 "content_excerpt": (p.get("excerpt") or p.get("content") or "")[:500] or None,
