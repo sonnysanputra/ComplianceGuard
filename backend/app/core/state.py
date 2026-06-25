@@ -37,6 +37,7 @@ class CaseState(TypedDict, total=False):
     priority: str            # risk-aware case priority P1-P4 (supersedes intake's)
     priority_reason: str     # why this priority was assigned
     fp_review: dict          # false-positive review outcome (sub-threshold cases)
+    clearance_note: dict     # professional clearance note for auto-closed cases
     sar_package: dict        # structured 12-section SAR draft (regulator style)
     sar_draft: str           # rendered Markdown of the SAR package
     review: dict

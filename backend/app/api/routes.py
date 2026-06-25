@@ -158,6 +158,7 @@ class CaseSnapshot(BaseModel):
     sla_label: Optional[str] = None
     risk_explanation: Optional[str] = None
     fp_review: Optional[dict] = None
+    clearance_note: Optional[dict] = None
     sar_package: Optional[dict] = None
     sar_draft: Optional[str] = None
     review: Optional[dict] = None
@@ -222,6 +223,7 @@ def _snapshot(case_id: str) -> dict:
         "case_id": case_id, "status": status,
         "triage": v.get("triage"), "data_quality": v.get("data_quality"),
         "fp_review": v.get("fp_review"),
+        "clearance_note": v.get("clearance_note"),
         "transaction_findings": v.get("transaction_findings"),
         "timeline_findings": v.get("timeline_findings"),
         "graph_findings": v.get("graph_findings"),

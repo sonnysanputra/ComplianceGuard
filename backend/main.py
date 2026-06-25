@@ -252,19 +252,22 @@ def main():
             print(f"\n✅ Case {status_for_decision(decision)}. Decision: {decision}"
                   + (f" — {note}" if note else ""))
             break
-    elif snap.get("fp_review") and not snap["fp_review"].get("requires_human_review"):
-        # Sub-threshold case cleared by the false-positive review
-        persist_case(snap, status=CaseStatus.LOW_RISK_AUTO_CLEARED)
-        print("\n" + "=" * 70)
-        print("  ✅ AUTO-CLOSED as FALSE POSITIVE — "
-              f"{snap['fp_review'].get('recommended_action')}")
-        print("=" * 70)
     else:
-        # Low-risk path: scored under threshold, nothing triggered
+        # Low-risk auto-close (clean OR a cleared false positive): show the
+        # professional clearance note rather than just ending.
         persist_case(snap, status=CaseStatus.LOW_RISK_AUTO_CLEARED)
+        cn = snap.get("clearance_note") or {}
+        is_fp = bool(snap.get("fp_review") and not snap["fp_review"].get("requires_human_review"))
         print("\n" + "=" * 70)
-        print("  ✅ AUTO-CLOSED — low risk, no SAR needed (early exit saved LLM calls)")
+        print(f"  ✅ AUTO-CLOSED — LOW_RISK_AUTO_CLEARED"
+              + ("  (cleared false positive)" if is_fp else ""))
         print("=" * 70)
+        print(f"  Reason : {cn.get('clearance_reason')}")
+        if cn.get("evidence"):
+            print("  Evidence:")
+            for e in cn["evidence"]:
+                print(f"     • {e}")
+        print(f"  Action : {cn.get('recommended_action')}")
 
 
 if __name__ == "__main__":

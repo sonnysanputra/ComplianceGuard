@@ -53,7 +53,8 @@ def test_sub_threshold_triggered_goes_to_fp_review():
 
 
 def test_clean_low_risk_auto_closes():
-    assert route_after_scoring(_state()) is END
+    # clean low-risk now routes to the clearance step (which emits a note), then END
+    assert route_after_scoring(_state()) == "auto_close"
 
 
 def test_errors_beat_high_risk():

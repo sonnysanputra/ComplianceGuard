@@ -80,7 +80,8 @@ def route_label(state: dict) -> str:
     if r is END:
         return "AUTO_CLOSE"
     return {"sar_drafting": "SAR_DRAFTED", "human_approval": "MANUAL_REVIEW",
-            "false_positive_review": "FALSE_POSITIVE_REVIEW"}.get(r, str(r))
+            "false_positive_review": "FALSE_POSITIVE_REVIEW",
+            "auto_close": "AUTO_CLOSE"}.get(r, str(r))
 
 
 def pct(n: int, d: int) -> str:

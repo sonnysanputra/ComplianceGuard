@@ -38,6 +38,7 @@ from app.agents.policy_rag import policy_rag
 from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
 from app.agents.false_positive_review import false_positive_review
+from app.agents.auto_close import auto_close
 from app.agents.sar_drafting import sar_drafting
 from app.agents.compliance_review import compliance_review
 from app.agents.human_approval import human_approval
@@ -102,14 +103,15 @@ def route_after_scoring(state: CaseState):
     if state.get("risk_factors"):
         return "false_positive_review"
 
-    # 7. clean: nothing triggered -> auto-close
-    return END
+    # 7. clean: nothing triggered -> auto-close (with a clearance note)
+    return "auto_close"
 
 
-# After the FP review: a clear false positive auto-closes; anything else
-# (incl. a sanctions/PEP name match) goes to a human.
+# After the FP review: a clear false positive auto-closes (with a clearance note);
+# anything else (incl. a sanctions/PEP name match) goes to a human.
 def route_after_fp(state: CaseState):
-    return END if not state.get("fp_review", {}).get("requires_human_review") else "human_approval"
+    return ("human_approval" if state.get("fp_review", {}).get("requires_human_review")
+            else "auto_close")
 
 
 # After the human acts: 'request_more_info' re-runs the investigation (bounded),
@@ -138,6 +140,7 @@ def build_graph():
     g.add_node("case_memory", case_memory)
     g.add_node("risk_scoring", risk_scoring)
     g.add_node("false_positive_review", false_positive_review)
+    g.add_node("auto_close", auto_close)
     g.add_node("sar_drafting", sar_drafting)
     g.add_node("compliance_review", compliance_review)
     g.add_node("human_approval", human_approval)
@@ -153,10 +156,13 @@ def build_graph():
         g.add_edge(node, "risk_scoring")
 
     g.add_conditional_edges("risk_scoring", route_after_scoring,
-                            ["sar_drafting", "false_positive_review", "human_approval", END])
-    # FP review: clear false positive -> auto-close; otherwise -> human
+                            ["sar_drafting", "false_positive_review", "human_approval",
+                             "auto_close", END])
+    # FP review: clear false positive -> auto-close (clearance note); else -> human
     g.add_conditional_edges("false_positive_review", route_after_fp,
-                            ["human_approval", END])
+                            ["human_approval", "auto_close"])
+    # auto-close emits a professional clearance note, then ends
+    g.add_edge("auto_close", END)
     g.add_edge("sar_drafting", "compliance_review")
     g.add_edge("compliance_review", "human_approval")
     # human decision: request_more_info loops back to investigate; else END
