@@ -1,0 +1,94 @@
+[
+  {
+    "case_id": "AML-STRUCT-GOLD-001",
+    "description": "Classic structuring: 3 transfers just under RM10k to a new overseas recipient.",
+    "customer": {"customer_id": "GOLD-1", "name": "Aiman Tan", "occupation": "Junior Clerk",
+                 "declared_income": 4000, "kyc_status": "Completed", "risk_category": "Medium",
+                 "account_age_months": 14, "country": "Malaysia", "previous_alerts": 0},
+    "transactions": [
+      {"transaction_id": "GT-1", "amount": 200, "date_time": "2026-06-01T10:00:00", "recipient": "Cafe", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"},
+      {"transaction_id": "GT-2", "amount": 9800, "date_time": "2026-06-22T09:15:00", "recipient": "Global Trade Ltd", "country": "Cambodia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GT-3", "amount": 9800, "date_time": "2026-06-22T11:40:00", "recipient": "Global Trade Ltd", "country": "Cambodia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GT-4", "amount": 9800, "date_time": "2026-06-22T14:55:00", "recipient": "Global Trade Ltd", "country": "Cambodia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"}
+    ],
+    "alert": {"id": "AML-STRUCT-GOLD-001", "customer_id": "GOLD-1", "reason": "Multiple transactions just under the reporting threshold (structuring)", "recipient": "Global Trade Ltd", "country": "Cambodia", "total_amount": 29400, "num_transactions": 3},
+    "expected_typology": "structuring",
+    "expected_min_score": 60,
+    "expected_policy_ids": ["AML-TYP-STRUCT-001", "MY-AML-STR-001"],
+    "expected_route": "SAR_DRAFTED"
+  },
+  {
+    "case_id": "AML-MULE-GOLD-001",
+    "description": "Money mule: large inbound funds rapidly forwarded to multiple new recipients.",
+    "customer": {"customer_id": "GOLD-2", "name": "Daniel Lee", "occupation": "Student",
+                 "declared_income": 1500, "kyc_status": "Completed", "risk_category": "High",
+                 "account_age_months": 4, "country": "Malaysia", "previous_alerts": 1},
+    "transactions": [
+      {"transaction_id": "GM-1", "amount": 48000, "date_time": "2026-06-21T10:00:00", "recipient": "Overseas Holdings", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "in"},
+      {"transaction_id": "GM-2", "amount": 11500, "date_time": "2026-06-21T12:30:00", "recipient": "Recipient One", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GM-3", "amount": 11500, "date_time": "2026-06-21T13:10:00", "recipient": "Recipient Two", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GM-4", "amount": 11500, "date_time": "2026-06-21T15:45:00", "recipient": "Recipient Three", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GM-5", "amount": 11500, "date_time": "2026-06-21T17:20:00", "recipient": "Recipient Four", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"}
+    ],
+    "alert": {"id": "AML-MULE-GOLD-001", "customer_id": "GOLD-2", "reason": "Large incoming funds forwarded to multiple new recipients (money mule)", "recipient": "Recipient One", "country": "Malaysia", "total_amount": 46000, "num_transactions": 4},
+    "expected_typology": "money mule",
+    "expected_min_score": 60,
+    "expected_policy_ids": ["AML-TYP-MULE-001"],
+    "expected_route": "SAR_DRAFTED"
+  },
+  {
+    "case_id": "AML-LAYER-GOLD-001",
+    "description": "Layering / dispersion: funds split across many new recipients in a short window.",
+    "customer": {"customer_id": "GOLD-3", "name": "Priya Segar", "occupation": "Freelancer",
+                 "declared_income": 6000, "kyc_status": "Completed", "risk_category": "Medium",
+                 "account_age_months": 22, "country": "Malaysia", "previous_alerts": 0},
+    "transactions": [
+      {"transaction_id": "GL-0", "amount": 500, "date_time": "2026-06-05T09:00:00", "recipient": "Grab", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"},
+      {"transaction_id": "GL-1", "amount": 3000, "date_time": "2026-06-20T09:05:00", "recipient": "Beneficiary A", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GL-2", "amount": 3000, "date_time": "2026-06-20T10:05:00", "recipient": "Beneficiary B", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GL-3", "amount": 3000, "date_time": "2026-06-20T11:05:00", "recipient": "Beneficiary C", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GL-4", "amount": 3000, "date_time": "2026-06-20T12:05:00", "recipient": "Beneficiary D", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GL-5", "amount": 3000, "date_time": "2026-06-20T13:05:00", "recipient": "Beneficiary E", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"},
+      {"transaction_id": "GL-6", "amount": 3000, "date_time": "2026-06-20T14:05:00", "recipient": "Beneficiary F", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out"}
+    ],
+    "alert": {"id": "AML-LAYER-GOLD-001", "customer_id": "GOLD-3", "reason": "Funds dispersed across many newly added recipients (layering)", "recipient": "Beneficiary A", "country": "Malaysia", "total_amount": 18000, "num_transactions": 6},
+    "expected_typology": "layering/dispersion",
+    "expected_min_score": 40,
+    "expected_policy_ids": ["AML-TYP-LAYER-001"],
+    "expected_route": "SAR_DRAFTED"
+  },
+  {
+    "case_id": "AML-FP-GOLD-001",
+    "description": "Documented supplier payment: volume-flagged but benign (clear purpose + invoice).",
+    "customer": {"customer_id": "GOLD-4", "name": "Tech Solutions Sdn Bhd", "occupation": "Business Owner",
+                 "declared_income": 30000, "kyc_status": "Completed", "risk_category": "Low",
+                 "account_age_months": 36, "country": "Malaysia", "previous_alerts": 0},
+    "transactions": [
+      {"transaction_id": "GF-1", "amount": 1500, "date_time": "2026-05-02T10:00:00", "recipient": "AWS Cloud", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"},
+      {"transaction_id": "GF-2", "amount": 1800, "date_time": "2026-05-18T10:00:00", "recipient": "Office Rental", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"},
+      {"transaction_id": "GF-3", "amount": 20000, "date_time": "2026-06-22T10:00:00", "recipient": "CloudHost Services", "country": "Malaysia", "transaction_type": "transfer", "is_new_recipient": true, "direction": "out", "transaction_purpose": "Monthly cloud hosting subscription", "source_of_funds": "Business operating revenue", "supporting_document_url": "https://docs/INV-2026-552.pdf"}
+    ],
+    "alert": {"id": "AML-FP-GOLD-001", "customer_id": "GOLD-4", "reason": "High-value payment to a new supplier flagged by transaction volume", "recipient": "CloudHost Services", "country": "Malaysia", "total_amount": 20000, "num_transactions": 1, "supporting_document": "INV-2026-552"},
+    "expected_typology": "volume spike",
+    "expected_min_score": 0,
+    "expected_policy_ids": ["MY-CDD-001"],
+    "expected_route": "FALSE_POSITIVE_REVIEW",
+    "expected_fp_clearance": true
+  },
+  {
+    "case_id": "AML-CLEAN-GOLD-001",
+    "description": "Clean low-risk account: routine payments to established recipients.",
+    "customer": {"customer_id": "GOLD-5", "name": "Sara Lim", "occupation": "Accountant",
+                 "declared_income": 9000, "kyc_status": "Completed", "risk_category": "Low",
+                 "account_age_months": 60, "country": "Malaysia", "previous_alerts": 0},
+    "transactions": [
+      {"transaction_id": "GC-1", "amount": 1200, "date_time": "2026-06-01T10:00:00", "recipient": "Landlord", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"},
+      {"transaction_id": "GC-2", "amount": 800, "date_time": "2026-06-10T10:00:00", "recipient": "Grocer", "country": "Malaysia", "transaction_type": "payment", "is_new_recipient": false, "direction": "out"}
+    ],
+    "alert": {"id": "AML-CLEAN-GOLD-001", "customer_id": "GOLD-5", "reason": "Routine account review", "recipient": "Landlord", "country": "Malaysia", "total_amount": 1200, "num_transactions": 1},
+    "expected_typology": "none",
+    "expected_min_score": 0,
+    "expected_policy_ids": ["MY-CDD-001"],
+    "expected_route": "AUTO_CLOSE"
+  }
+]
