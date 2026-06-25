@@ -25,7 +25,7 @@ import json
 import logging
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -37,7 +37,9 @@ from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
 from app.rules.rule_engine import get_rules, reload_rules
 from app.rules.country_risk import get_country_risk
-from app.tools.rag import load_policies, reset_policy_collection
+from app.tools.rag import (
+    load_policies, reset_policy_collection, get_policy, save_uploaded_policy, delete_policy,
+)
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
     get_case_trace,
@@ -411,13 +413,46 @@ def policies():
              "category": p["category"]} for p in load_policies()]
 
 
+@app.post("/policies/upload")
+async def policies_upload(file: UploadFile = File(...)):
+    """Upload a new policy document (.md / .txt / .pdf). It's saved to the policy
+    folder and immediately re-indexed so it's searchable by the RAG layer."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    try:
+        policy = save_uploaded_policy(file.filename or "policy.md", data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "uploaded", "policy_id": policy["id"], "title": policy["title"],
+            "filename": policy["filename"]}
+
+
 @app.post("/policies/reindex")
 def policies_reindex():
     """Re-index the policy folder -- picks up newly added or edited .md/.pdf
     policy files WITHOUT restarting the server."""
     reset_policy_collection()
     docs = load_policies()
-    return {"reindexed": len(docs), "policies": [p["id"] for p in docs]}
+    return {"status": "reindexed", "reindexed": len(docs),
+            "policies": [p["id"] for p in docs]}
+
+
+@app.get("/policies/{policy_id}")
+def policy_detail(policy_id: str):
+    """The full content of a single policy document."""
+    p = get_policy(policy_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"No policy '{policy_id}'.")
+    return p
+
+
+@app.delete("/policies/{policy_id}")
+def policy_delete(policy_id: str):
+    """Remove a policy document and re-index."""
+    if not delete_policy(policy_id):
+        raise HTTPException(status_code=404, detail=f"No policy '{policy_id}'.")
+    return {"status": "deleted", "policy_id": policy_id}
 
 
 @app.get("/case-statuses")

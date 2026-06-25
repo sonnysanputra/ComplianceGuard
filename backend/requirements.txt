@@ -8,6 +8,7 @@ sentence-transformers
 tenacity
 fastapi
 uvicorn[standard]
+python-multipart
 fpdf2
 python-docx
 PyMuPDF

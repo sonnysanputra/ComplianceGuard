@@ -63,34 +63,88 @@ def _read_pdf(path: Path) -> str:
         return ""
 
 
+ALLOWED_EXTS = {".md", ".txt", ".pdf"}
+
+
+def _policy_from_path(path: Path) -> dict | None:
+    """Parse a single policy file into a structured policy dict (or None)."""
+    ext = path.suffix.lower()
+    if ext in (".md", ".txt"):
+        meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
+    elif ext == ".pdf":
+        meta, body = {}, _read_pdf(path)
+    else:
+        return None
+    if not body:
+        return None
+    return {
+        "id": meta.get("id") or path.stem.upper(),
+        "title": meta.get("title") or path.stem.replace("_", " ").title(),
+        "section": meta.get("section", ""),
+        "category": meta.get("category", "General"),
+        "jurisdiction": meta.get("jurisdiction", "General"),
+        "source": meta.get("source", ""),
+        "text": body,
+        "filename": path.name,
+    }
+
+
 def load_policies() -> list[dict]:
     """Load every policy document from POLICIES_DIR (.md / .txt / .pdf)."""
     folder = Path(POLICIES_DIR)
-    policies = []
     if not folder.exists():
         logger.warning(f"[rag] policies folder not found: {folder}")
-        return policies
+        return []
+    return [p for path in sorted(folder.iterdir())
+            if (p := _policy_from_path(path)) is not None]
 
+
+def get_policy(policy_id: str) -> dict | None:
+    """Return the full policy (incl. text) for a policy_id, or None."""
+    for p in load_policies():
+        if p["id"] == policy_id:
+            return p
+    return None
+
+
+def _file_for_policy(policy_id: str) -> Path | None:
+    folder = Path(POLICIES_DIR)
+    if not folder.exists():
+        return None
     for path in sorted(folder.iterdir()):
-        ext = path.suffix.lower()
-        if ext in (".md", ".txt"):
-            meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
-        elif ext == ".pdf":
-            meta, body = {}, _read_pdf(path)
-        else:
-            continue
-        if not body:
-            continue
-        policies.append({
-            "id": meta.get("id") or path.stem.upper(),
-            "title": meta.get("title") or path.stem.replace("_", " ").title(),
-            "section": meta.get("section", ""),
-            "category": meta.get("category", "General"),
-            "jurisdiction": meta.get("jurisdiction", "General"),
-            "source": meta.get("source", ""),
-            "text": body,
-        })
-    return policies
+        pol = _policy_from_path(path)
+        if pol and pol["id"] == policy_id:
+            return path
+    return None
+
+
+def save_uploaded_policy(filename: str, data: bytes) -> dict:
+    """Save an uploaded policy file into POLICIES_DIR and re-index. Returns the
+    parsed policy. Raises ValueError for unsupported types or empty content."""
+    safe = Path(filename).name                       # strip any path components
+    ext = Path(safe).suffix.lower()
+    if ext not in ALLOWED_EXTS:
+        raise ValueError(f"Unsupported file type '{ext}'. Allowed: {sorted(ALLOWED_EXTS)}")
+    folder = Path(POLICIES_DIR)
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / safe
+    dest.write_bytes(data)
+    policy = _policy_from_path(dest)
+    if policy is None:
+        dest.unlink(missing_ok=True)
+        raise ValueError("File had no readable policy content.")
+    reset_policy_collection()                        # re-index so it's searchable now
+    return policy
+
+
+def delete_policy(policy_id: str) -> bool:
+    """Delete the file backing a policy and re-index. True if it existed."""
+    path = _file_for_policy(policy_id)
+    if path is None:
+        return False
+    path.unlink(missing_ok=True)
+    reset_policy_collection()
+    return True
 
 
 def _policies_hash(policies: list[dict]) -> str:
