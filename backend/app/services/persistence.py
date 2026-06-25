@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.tools.db import client
+from app.core.case_status import is_valid_transition, status_for_decision, CaseStatus
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,18 @@ def persist_case(state: dict, status: str) -> bool:
             "updated_at":     _now(),
         }).execute()
 
-        # log the status transition (append-only history)
+        # log the status transition (append-only history), flagging any that
+        # break the lifecycle rules so impossible states are caught
         if status != old_status:
+            valid = is_valid_transition(old_status, status)
+            if not valid:
+                logger.warning(f"[persistence] unexpected status transition "
+                               f"{old_status} -> {status} for case {case_id}")
             db.table("case_status_history").insert({
                 "case_id": case_id, "old_status": old_status, "new_status": status,
-                "changed_by": "system", "reason": "automated case transition",
+                "changed_by": "system",
+                "reason": ("automated case transition" if valid
+                           else f"automated transition (unexpected from {old_status})"),
             }).execute()
 
         # clear child rows so a re-run doesn't duplicate them
@@ -175,8 +183,8 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
             "case_id": case_id, "decision": decision, "analyst_id": analyst_id,
             "notes": notes, "final_risk_level": final_risk_level,
         }).execute()
-        # request_more_info keeps the case open; everything else closes it
-        status = "needs_more_info" if decision == "request_more_info" else "closed"
+        # map the decision onto the lifecycle (approve -> APPROVED_FOR_STR_REVIEW, etc.)
+        status = status_for_decision(decision)
         prev = (db.table("cases").select("status")
                 .eq("case_id", case_id).execute().data or [])
         old_status = prev[0]["status"] if prev else None
@@ -185,6 +193,9 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
         ).eq("case_id", case_id).execute()
         # record the human-driven transition
         if status != old_status:
+            if not is_valid_transition(old_status, status):
+                logger.warning(f"[persistence] unexpected status transition "
+                               f"{old_status} -> {status} for case {case_id}")
             db.table("case_status_history").insert({
                 "case_id": case_id, "old_status": old_status, "new_status": status,
                 "changed_by": analyst_id or "analyst",

@@ -24,7 +24,8 @@ Confirm the triage (alert type, severity, priority) and justify the priority bri
 using ONLY the facts provided. Do not invent details. Priorities mean:
 - P1: act now (very large amount, or transfer to a high-risk jurisdiction)
 - P2: high (large amount)
-- P3: medium  - P4: routine
+- P3: medium  
+- P4: routine
 """
 
 

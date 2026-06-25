@@ -38,7 +38,8 @@ class CaseMemoryAgent(BaseAgent):
             1 for c in prior_cases if c.get("risk_level") in ("HIGH", "CRITICAL"))
         previous_false_positives = sum(
             1 for c in prior_cases
-            if c.get("status") == "auto_closed" or c.get("risk_level") == "LOW")
+            if c.get("status") in ("LOW_RISK_AUTO_CLEARED", "auto_closed")   # +legacy rows
+            or c.get("risk_level") == "LOW")
         same_recipient_seen_before = bool(current_recipient) and any(
             (c.get("recipient") or "").strip().lower() == current_recipient
             for c in prior_cases)

@@ -13,6 +13,7 @@ from langgraph.types import Command
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
 from app.services.persistence import persist_case, persist_decision
+from app.core.case_status import CaseStatus, status_for_decision
 
 
 def pick_scenario() -> dict:
@@ -59,7 +60,7 @@ def main():
         print("\n  Audit:")
         for line in sorted(snap.get("audit", [])):
             print("   ", line)
-        persist_case(snap, status="needs_more_information")
+        persist_case(snap, status=CaseStatus.NEEDS_MORE_INFORMATION)
         return
 
     tri = snap.get("triage", {})
@@ -172,7 +173,8 @@ def main():
     if "__interrupt__" in result:
         # request_more_info re-runs the investigation, so loop until a final decision
         while "__interrupt__" in result:
-            persist_case(graph.get_state(config).values, status="awaiting_decision")
+            persist_case(graph.get_state(config).values,
+                         status=CaseStatus.AWAITING_ANALYST_REVIEW)
             print("\n" + "=" * 70)
             print("  ⏸  PAUSED — analyst decision required")
             print("=" * 70)
@@ -190,20 +192,20 @@ def main():
             if decision == "request_more_info" and "__interrupt__" in result:
                 print("\n🔁 Re-investigating with the request on record...")
                 continue
-            persist_case(final, status="closed")
-            print(f"\n✅ Case closed. Decision: {decision}"
+            persist_case(final, status=status_for_decision(decision))
+            print(f"\n✅ Case {status_for_decision(decision)}. Decision: {decision}"
                   + (f" — {note}" if note else ""))
             break
     elif snap.get("fp_review") and not snap["fp_review"].get("requires_human_review"):
         # Sub-threshold case cleared by the false-positive review
-        persist_case(snap, status="closed_false_positive")
+        persist_case(snap, status=CaseStatus.LOW_RISK_AUTO_CLEARED)
         print("\n" + "=" * 70)
         print("  ✅ AUTO-CLOSED as FALSE POSITIVE — "
               f"{snap['fp_review'].get('recommended_action')}")
         print("=" * 70)
     else:
         # Low-risk path: scored under threshold, nothing triggered
-        persist_case(snap, status="auto_closed")
+        persist_case(snap, status=CaseStatus.LOW_RISK_AUTO_CLEARED)
         print("\n" + "=" * 70)
         print("  ✅ AUTO-CLOSED — low risk, no SAR needed (early exit saved LLM calls)")
         print("=" * 70)

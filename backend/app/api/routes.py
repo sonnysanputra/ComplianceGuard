@@ -43,6 +43,7 @@ from app.services.persistence import (
     get_case_trace,
 )
 from app.services.sar_render import sar_to_sections
+from app.core.case_status import derive_status, ALL_STATUSES, VALID_TRANSITIONS
 
 # agent instances that are safe to re-run standalone (no human interrupt)
 from app.agents.alert_intake import alert_intake
@@ -193,21 +194,8 @@ def _snapshot(case_id: str) -> dict:
     if not v:
         raise HTTPException(status_code=404, detail=f"No case '{case_id}'")
 
-    dq = v.get("data_quality", {})
-    fp = v.get("fp_review", {})
     awaiting = "human_approval" in (state.next or ())
-    if dq and not dq.get("complete", True):
-        status = "needs_more_information"
-    elif v.get("errors") and not v.get("human_decision"):
-        status = "manual_review_required"
-    elif awaiting:
-        status = "awaiting_decision"
-    elif v.get("human_decision"):
-        status = "closed"
-    elif fp and not fp.get("requires_human_review"):
-        status = "closed_false_positive"
-    else:
-        status = "auto_closed"
+    status = derive_status(v, awaiting)
 
     return {
         "case_id": case_id, "status": status,
@@ -417,6 +405,12 @@ def policies_reindex():
     reset_policy_collection()
     docs = load_policies()
     return {"reindexed": len(docs), "policies": [p["id"] for p in docs]}
+
+
+@app.get("/case-statuses")
+def case_statuses():
+    """The case status lifecycle: every valid status and the allowed transitions."""
+    return {"statuses": ALL_STATUSES, "transitions": VALID_TRANSITIONS}
 
 
 @app.get("/rules")
