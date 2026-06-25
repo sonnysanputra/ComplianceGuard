@@ -24,6 +24,7 @@ from app.tools.db import get_watchlist, get_customer
 class WatchlistScreeningAgent(BaseAgent):
     name = "watchlist_screening"
     label = "Watchlist Screening Agent"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         wl_rules = get_rules()["watchlist"]

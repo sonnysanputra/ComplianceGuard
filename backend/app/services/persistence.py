@@ -146,6 +146,11 @@ def persist_case(state: dict, status: str) -> bool:
                 "output":      t.get("output") or {},
                 "confidence":  t.get("confidence"),
                 "duration_ms": t.get("duration_ms"),
+                # model governance: what produced this output
+                "model_name":      t.get("model_name"),
+                "prompt_version":  t.get("prompt_version"),
+                "policy_version":  t.get("policy_version"),
+                "ruleset_version": t.get("ruleset_version"),
             })
         if events:
             db.table("case_events").insert(events).execute()

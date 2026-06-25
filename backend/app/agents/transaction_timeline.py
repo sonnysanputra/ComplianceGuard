@@ -35,6 +35,7 @@ def _ordinal(n: int) -> str:
 class TransactionTimelineAgent(BaseAgent):
     name = "transaction_timeline"
     label = "Transaction Timeline Agent"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         cid = state["alert"]["customer_id"]

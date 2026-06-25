@@ -21,6 +21,7 @@ from app.services.persistence import get_customer_history
 class CaseMemoryAgent(BaseAgent):
     name = "case_memory"
     label = "Memory Agent"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         alert = state["alert"]

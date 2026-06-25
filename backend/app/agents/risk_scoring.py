@@ -36,6 +36,7 @@ Identify the top 2-3 risk drivers. Do not invent findings that were not provided
 class RiskScoringAgent(BaseAgent):
     name = "risk_scoring"
     label = "Risk Scoring Agent"
+    prompt_version = "risk_scoring_v1.2"
 
     def run(self, state: dict) -> dict:
         # ---- 0. Error policy: if any investigation tool failed, do NOT score

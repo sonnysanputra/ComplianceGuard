@@ -69,6 +69,7 @@ def human_approval(state: dict) -> dict:
     if note:
         audit_msg += f" — {note}"
     updates["audit"] = stamp(audit_msg)
+    from app.core.governance import governance
     updates["audit_rationales"] = [{
         "agent": "human_approval",
         "rationale": audit_msg,
@@ -76,5 +77,6 @@ def human_approval(state: dict) -> dict:
         "evidence": [note] if note else [],
         "output": {"decision": decision, "override": payload.get("final_risk_level")},
         "duration_ms": 0,
+        **governance("human_approval_v1", uses_llm=False),   # human decision: model_name=None
     }]
     return updates

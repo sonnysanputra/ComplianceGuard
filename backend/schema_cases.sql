@@ -45,16 +45,26 @@ create table if not exists case_events (
     created_at  timestamptz default now()
 );
 
--- Each agent's structured output + confidence + duration
+-- Each agent's structured output + confidence + duration + model governance
 create table if not exists agent_outputs (
-    id          bigserial primary key,
-    case_id     text references cases(case_id),
-    agent_name  text,
-    output      jsonb,
-    confidence  numeric,
-    duration_ms integer,
-    created_at  timestamptz default now()
+    id              bigserial primary key,
+    case_id         text references cases(case_id),
+    agent_name      text,
+    output          jsonb,
+    confidence      numeric,
+    duration_ms     integer,
+    -- model governance: which model / prompt / ruleset / policy produced this output
+    model_name      text,
+    prompt_version  text,
+    policy_version  text,
+    ruleset_version text,
+    created_at      timestamptz default now()
 );
+-- For existing installs:
+alter table agent_outputs add column if not exists model_name      text;
+alter table agent_outputs add column if not exists prompt_version  text;
+alter table agent_outputs add column if not exists policy_version  text;
+alter table agent_outputs add column if not exists ruleset_version text;
 
 -- The risk assessment (rule + AI blend)
 create table if not exists risk_assessments (

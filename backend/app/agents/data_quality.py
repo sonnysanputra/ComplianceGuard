@@ -28,6 +28,7 @@ _GOOD_THRESHOLD = 85          # only-optional gaps below this -> PARTIAL
 class DataQualityAgent(BaseAgent):
     name = "data_quality"
     label = "Data Quality Gate"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         alert = state["alert"]

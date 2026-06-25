@@ -9,6 +9,7 @@
 # Edit these values, then POST /rules/reload (no restart needed).
 # =====================================================================
 
+version: aml_rules_2026_06        # ruleset version, recorded on every AI output
 currency: MYR
 
 # ---- SC red-flag-based typology detection rules ----

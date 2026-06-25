@@ -45,11 +45,18 @@ def get_rules() -> dict:
     return _rules
 
 
+def ruleset_version() -> str:
+    """The AML ruleset version recorded on every AI output (model governance)."""
+    return get_rules().get("version") or "aml_rules_unversioned"
+
+
 def reload_rules() -> dict:
     """Re-read the rule YAML + the country-risk register at runtime."""
     global _rules
     _rules = None
     reload_country_risk()
+    from app.core.governance import reset_cache
+    reset_cache()                          # ruleset version may have changed
     return get_rules()
 
 

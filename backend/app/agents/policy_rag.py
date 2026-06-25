@@ -14,6 +14,7 @@ from app.tools.rag import search_policies
 class PolicyRAGAgent(BaseAgent):
     name = "policy_rag"
     label = "Policy RAG Agent"
+    uses_llm = False        # retrieval only (embeddings), no generation
 
     def run(self, state: dict) -> dict:
         query = state["alert"]["reason"]

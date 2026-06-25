@@ -37,6 +37,8 @@ Confidence: [0-100]
 class BaseAgent(ABC):
     name: str = "base_agent"     # machine id, used in traces/messages
     label: str = "Base Agent"    # human-readable, used in the audit timeline
+    prompt_version: str = None   # governance: prompt version (defaults to <name>_v1)
+    uses_llm: bool = True        # governance: False for purely deterministic agents
 
     # ── Subclasses implement this ─────────────────────────────────────────
     @abstractmethod
@@ -113,8 +115,10 @@ class BaseAgent(ABC):
 
     def trace(self, rationale: str, confidence: float,
               evidence: list | None = None, output: dict | None = None) -> dict:
-        """Build an audit-rationale entry: a concise, evidence-backed rationale and
-        a confidence score (no raw chain-of-thought)."""
+        """Build an audit-rationale entry: a concise, evidence-backed rationale, a
+        confidence score, and model-governance metadata (what produced this output)."""
+        from app.core.governance import governance
+        gov = governance(self.prompt_version or f"{self.name}_v1", self.uses_llm)
         return {
             "agent": self.name,
             "rationale": rationale,
@@ -122,6 +126,7 @@ class BaseAgent(ABC):
             "evidence": evidence or [],
             "output": output or {},
             "duration_ms": 0,   # filled in by __call__
+            **gov,              # model_name, prompt_version, ruleset_version, policy_version
         }
 
     @staticmethod

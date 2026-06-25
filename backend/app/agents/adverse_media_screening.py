@@ -22,6 +22,7 @@ from app.tools.adverse_media import search_adverse_media
 class AdverseMediaScreeningAgent(BaseAgent):
     name = "adverse_media_screening"
     label = "Adverse Media Screening Agent"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         alert = state["alert"]

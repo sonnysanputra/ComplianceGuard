@@ -228,6 +228,19 @@ def _chunks_hash(chunks: list[dict]) -> str:
     return h.hexdigest()[:16]
 
 
+_policy_version = None
+
+
+def policy_version() -> str:
+    """Content-hash version of the current policy corpus (for model governance).
+    Computed from the files only -- no embeddings -- and cached."""
+    global _policy_version
+    if _policy_version is None:
+        chunks = [c for p in load_policies() for c in chunk_policy_doc(p)]
+        _policy_version = "policy_" + (_chunks_hash(chunks) if chunks else "empty")
+    return _policy_version
+
+
 def get_policy_collection():
     """Return the policy collection. Loads documents from files and rebuilds the
     vector store whenever the policy set CHANGES (new/edited/removed files),
@@ -272,8 +285,11 @@ def get_policy_collection():
 def reset_policy_collection():
     """Drop the cached collection so the next access re-loads the policy files
     and re-indexes them. Call this after adding/editing a policy at runtime."""
-    global _collection
+    global _collection, _policy_version
     _collection = None
+    _policy_version = None        # policy version changes when the corpus does
+    from app.core.governance import reset_cache
+    reset_cache()
     return get_policy_collection()
 
 

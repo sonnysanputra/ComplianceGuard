@@ -18,6 +18,7 @@ from datetime import datetime
 
 from app.agents.base import BaseAgent
 from app.core.state import stamp
+from app.core.governance import governance as _governance
 from app.services.sar_render import sar_to_markdown
 from app.tools.db import get_customer, get_transactions
 
@@ -132,6 +133,9 @@ class SARDraftingAgent(BaseAgent):
                 "status": "DRAFT - awaiting human analyst review",
                 "report_type": "Draft investigation package (not an STR submission)",
                 "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "governance": (lambda g: f"model {g['model_name']} | "
+                               f"ruleset {g['ruleset_version']} | "
+                               f"policy {g['policy_version']}")(_governance("sar_drafting_v1")),
             },
             "customer_information": {
                 "customer_id": alert.get("customer_id"),

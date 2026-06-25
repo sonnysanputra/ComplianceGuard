@@ -20,6 +20,7 @@ from app.tools.graph_analysis import analyze_account
 class GraphAnalysisAgent(BaseAgent):
     name = "graph_analysis"
     label = "Relationship Graph Agent"
+    uses_llm = False
 
     def run(self, state: dict) -> dict:
         cid = state["alert"]["customer_id"]
