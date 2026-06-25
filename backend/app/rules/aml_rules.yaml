@@ -146,5 +146,40 @@ memory:
   prior_escalation_points: 15
   repeat_recipient_points: 10
 
+# ---- account behaviour baseline (deviation from the customer's OWN normal) ----
+# SC red flags: large withdrawals from dormant/inactive accounts, sudden
+# unexpectedly large activity, transfers to new geographies.
+behavior_baseline:
+  amount_spike_multiplier: 5
+  amount_spike:
+    rule_id: AML-BEHAV-001
+    name: Amount Spike vs Account Baseline
+    severity: HIGH
+    points: 15
+  new_country:
+    rule_id: AML-BEHAV-002
+    name: Transfer to a New Country
+    severity: MEDIUM
+    points: 10
+  off_hours:
+    rule_id: AML-BEHAV-003
+    name: Activity Outside Usual Hours
+    severity: LOW
+    points: 5
+    start: 9
+    end: 18
+  new_recipient_high:
+    rule_id: AML-BEHAV-004
+    name: High-Value Transfer to a New Recipient
+    severity: HIGH
+    points: 15
+    amount_threshold: 10000
+  dormancy:
+    rule_id: AML-BEHAV-005
+    name: Dormant Account Reactivation
+    severity: HIGH
+    points: 20
+    days: 90
+
 scoring:
   escalation_threshold: 60           # final score at/above this escalates to a SAR

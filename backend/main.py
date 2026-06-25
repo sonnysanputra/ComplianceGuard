@@ -79,6 +79,12 @@ def main():
         extra = "  ⚠ manual review required" if dq.get("severity") == "PARTIAL" else ""
         print(f"  Data qual. : {dq.get('severity')} ({dq.get('quality_score')}/100){extra}")
     print(f"  Typology   : {snap.get('transaction_findings', {}).get('typology')}")
+    base = snap.get("transaction_findings", {}).get("baseline", {})
+    if base and base.get("history_count"):
+        print(f"  Baseline   : avg/mo RM{base.get('avg_monthly_outgoing'):,} | "
+              f"max RM{base.get('max_single_transaction_90d'):,} | "
+              f"usual {base.get('usual_countries')} @ {base.get('usual_transaction_hours')} | "
+              f"new-recipient rate {base.get('new_recipient_rate')}")
     print(f"  KYC        : {kyc.get('consistency', '?')} | {len(kyc.get('checks_failed', []))} checks failed"
           f"{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
     if kyc.get("key_concern") and kyc.get("key_concern") != "none":

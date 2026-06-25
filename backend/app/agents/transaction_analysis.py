@@ -10,6 +10,7 @@ kept as a grounding signal + safety fallback if the LLM response can't be parsed
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.core.evidence import EvidenceCollector
+from app.core.baseline import compute_baseline
 from app.rules.rule_engine import detect_transaction_typology
 from app.tools.db import get_transactions
 
@@ -104,6 +105,7 @@ class TransactionAnalysisAgent(BaseAgent):
                 "distinct_recipients": det["distinct_recipients"],
                 "window_hours": det["window_hours"],
                 "summary": reasoning,
+                "baseline": compute_baseline(txns),
                 "evidence_ids": evidence_ids,
             },
             "evidence": coll.items,

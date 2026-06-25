@@ -21,6 +21,7 @@ from collections import defaultdict
 import yaml
 
 from app.rules.rule_models import TriggeredRule, RuleResult
+from app.core.baseline import behavior_deviations
 # country risk lives in its own structured register module
 from app.rules.country_risk import (
     get_country_risk, high_risk_countries, risk_level, describe,
@@ -296,6 +297,14 @@ def evaluate_aml_rules(customer: dict, transactions: list,
             source="Adverse media screening",
             evidence_items=[ev("adverse_media", h.get("name"), "negative_news",
                                h.get("risk_level"), h.get("title")) for h in hits]))
+
+    # --- account behaviour baseline deviations ---
+    bcfg = R.get("behavior_baseline")
+    if bcfg:
+        for d in behavior_deviations(transactions, alert or {}, bcfg):
+            fired.append(TriggeredRule(d["rule_id"], d["name"], d["points"], d["severity"],
+                                       d["evidence"], source="Account behaviour baseline",
+                                       evidence_items=d.get("evidence_items", [])))
 
     # --- prior alert history ---
     hist = R["history"]
