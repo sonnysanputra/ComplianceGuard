@@ -89,7 +89,7 @@ def derive_status(values: dict, awaiting: bool) -> str:
     case has *reached* -- the intermediate running states are captured as the case
     is persisted over its lifetime (see case_status_history)."""
     dq = values.get("data_quality") or {}
-    if dq and not dq.get("complete", True):
+    if dq and not dq.get("can_continue", dq.get("complete", True)):
         return CaseStatus.NEEDS_MORE_INFORMATION
     if values.get("errors") and not values.get("human_decision"):
         return CaseStatus.ERROR_MANUAL_REVIEW

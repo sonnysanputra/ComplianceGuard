@@ -40,10 +40,11 @@ from app.agents.compliance_review import compliance_review
 from app.agents.human_approval import human_approval
 
 
-# Incomplete cases halt here -- request more info instead of investigating blind.
+# POOR / CRITICAL_MISSING data halts here -- request more info instead of
+# investigating blind. GOOD / PARTIAL data can proceed.
 def route_after_data_quality(state: CaseState):
     dq = state.get("data_quality", {})
-    return INVESTIGATION if dq.get("complete", True) else END
+    return INVESTIGATION if dq.get("can_continue", dq.get("complete", True)) else END
 
 
 # Routing after scoring:
@@ -58,6 +59,11 @@ def route_after_scoring(state: CaseState):
     escalate_at = get_rules()["scoring"]["escalation_threshold"]
     if state.get("risk_score", 0) >= escalate_at:
         return "sar_drafting"
+
+    # PARTIAL data quality means we investigated, but a human must sign off --
+    # don't auto-close a case built on degraded data.
+    if (state.get("data_quality") or {}).get("severity") == "PARTIAL":
+        return "human_approval"
 
     triggered = bool(state.get("risk_factors"))
     wf = state.get("watchlist_findings", {})

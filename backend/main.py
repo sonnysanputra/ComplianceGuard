@@ -47,15 +47,17 @@ def main():
     # ---- Show the investigation result so far ----
     snap = graph.get_state(config).values
 
-    # ---- Data quality gate: incomplete cases never reach the investigation ----
+    # ---- Data quality gate: POOR/CRITICAL cases never reach the investigation ----
     dq = snap.get("data_quality", {})
-    if dq and not dq.get("complete", True):
+    if dq and not dq.get("can_continue", dq.get("complete", True)):
         tri = snap.get("triage", {})
         print("\n" + "=" * 70)
-        print("  ⚠  NEEDS MORE INFORMATION — case cannot be reliably investigated")
+        print(f"  ⚠  NEEDS MORE INFORMATION — data quality {dq.get('severity')} "
+              f"(score {dq.get('quality_score')}/100)")
         print("=" * 70)
         print(f"  Alert      : {alert['id']} ({tri.get('alert_type')})")
-        print(f"  Missing    : {', '.join(dq.get('missing_fields', []))}")
+        print(f"  Critical   : {', '.join(dq.get('missing_critical_fields', [])) or '-'}")
+        print(f"  Optional   : {', '.join(dq.get('missing_optional_fields', [])) or '-'}")
         print(f"  Action     : {dq.get('recommended_action')}")
         print("\n  Audit:")
         for line in sorted(snap.get("audit", [])):
@@ -73,6 +75,9 @@ def main():
     print("CASE TRIAGE & KEY FINDINGS:")
     print("-" * 70)
     print(f"  Triage     : {tri.get('alert_type')} | {tri.get('severity')} severity | priority {tri.get('priority')}")
+    if dq:
+        extra = "  ⚠ manual review required" if dq.get("severity") == "PARTIAL" else ""
+        print(f"  Data qual. : {dq.get('severity')} ({dq.get('quality_score')}/100){extra}")
     print(f"  Typology   : {snap.get('transaction_findings', {}).get('typology')}")
     print(f"  KYC        : {kyc.get('consistency', '?')} | {len(kyc.get('checks_failed', []))} checks failed"
           f"{'  -> EDD REQUIRED' if kyc.get('edd_required') else ''}")
