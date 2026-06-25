@@ -38,40 +38,49 @@ flowchart TD
     A([Suspicious Activity Alert]) --> AI
 
     subgraph S1["STAGE 1 · Intake and Triage"]
-        AI["Alert Intake<br/><i>type · severity · P1–P4</i>"] --> DQ{"Data Quality Gate<br/><i>GOOD · PARTIAL · POOR · CRITICAL</i>"}
+        AI["Alert Intake<br/>Agent"] --> DQ{"Data Quality<br/>Gate Agent<br/>GOOD · PARTIAL · POOR · CRITICAL"}
     end
     DQ -->|POOR / CRITICAL| NMI([Needs More Information])
 
-    subgraph S2["STAGE 2 · Parallel Investigation — 8 agents at once"]
-        INV["Transaction Analysis · Timeline · Relationship Graph · KYC Profile<br/>Watchlist · Adverse Media · Policy RAG · Memory"]
+    subgraph S2["STAGE 2 · Parallel Investigation — these 8 agents run at the same time"]
+        direction LR
+        T1["Transaction<br/>Analysis<br/>Agent"]
+        T2["Transaction<br/>Timeline<br/>Agent"]
+        T3["Relationship<br/>Graph<br/>Agent"]
+        T4["KYC Profile<br/>Agent"]
+        T5["Watchlist<br/>Screening<br/>Agent"]
+        T6["Adverse<br/>Media<br/>Agent"]
+        T7["Policy RAG<br/>Agent"]
+        T8["Memory<br/>Agent"]
     end
-    DQ -->|GOOD / PARTIAL| INV
+    DQ -->|GOOD / PARTIAL| T1
+    DQ --> T2 & T3 & T4 & T5 & T6 & T7 & T8
 
     subgraph S3["STAGE 3 · Risk Scoring"]
-        RS["rules ⊕ Qwen<br/><i>factors+evidence · confidence · priority+SLA</i>"]
+        RS["Risk Scoring Agent<br/>rules ⊕ Qwen · factors+evidence · confidence · priority+SLA"]
     end
-    INV --> RS
+    T1 & T2 & T3 & T4 & T5 & T6 & T7 & T8 --> RS
 
-    subgraph S4["STAGE 4 · Disposition (fail-safe router)"]
-        R{route}
+    subgraph S4["STAGE 4 · Disposition — fail-safe router"]
+        R{route} -->|sub-threshold flagged| FP["False-Positive<br/>Review Agent"]
+        R -->|clean low risk| ACL["Auto-Clearance<br/>Agent"]
+        FP -->|cleared| ACL
     end
     RS --> R
-    R -->|clean low risk| AC([Auto-close + clearance note])
-    R -->|sub-threshold flagged| FP["False-Positive Review"]
-    FP -->|cleared| AC
+    ACL --> AC([Auto-closed + clearance note])
 
     subgraph S5["STAGE 5 · Reporting"]
-        SAR["SAR Drafting"] --> CR["Compliance Review"]
+        SAR["SAR Drafting<br/>Agent"] --> CR["Compliance<br/>Review Agent"]
     end
     R -->|high risk| SAR
 
     subgraph S6["STAGE 6 · Human Approval"]
-        H(["⏸ approve · reject · edit · request more info"])
+        H(["⏸ Human Approval Agent<br/>approve · reject · edit · request more info"])
     end
     CR --> H
     FP -->|needs human| H
     R -->|tool failure · watchlist match · degraded data| H
-    H -->|request more info| INV
+    H -->|request more info| T1
     H -->|decided| DONE([Approved SAR + audit trail])
 ```
 
