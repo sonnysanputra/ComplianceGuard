@@ -27,7 +27,8 @@ insert into customers values
 ('CUST-10291', 'Aiman Rahman', 'Junior Clerk',   4000,  'Completed', 'Medium', 14, 'Malaysia', 1),
 ('CUST-20555', 'Sarah Lim',    'Business Owner',  45000, 'Completed', 'Low',    60, 'Malaysia', 0),
 ('CUST-30877', 'Daniel Tan',   'Student',         1500,  'Completed', 'High',   4,  'Malaysia', 2),
-('CUST-40233', 'Priya Nair',   'Freelancer',      6000,  'Completed', 'Medium', 22, 'Malaysia', 0);
+('CUST-40233', 'Priya Nair',   'Freelancer',      6000,  'Completed', 'Medium', 22, 'Malaysia', 0),
+('CUST-50001', 'Tech Solutions Sdn Bhd', 'Business Owner', 30000, 'Completed', 'Low', 36, 'Malaysia', 0);
 
 -- --------------------------------------------------------------------
 -- Transactions  (direction: 'in' = incoming, 'out' = outgoing)
@@ -75,7 +76,12 @@ insert into transactions values
 ('TXN-4005','CUST-40233',3000,'2026-06-20T12:30:00','Beneficiary E','Malaysia','transfer',true,'out'),
 ('TXN-4006','CUST-40233',3000,'2026-06-20T14:10:00','Beneficiary F','Malaysia','transfer',true,'out'),
 ('TXN-4007','CUST-40233',3000,'2026-06-20T15:50:00','Beneficiary G','Malaysia','transfer',true,'out'),
-('TXN-4008','CUST-40233',3000,'2026-06-20T17:30:00','Beneficiary H','Malaysia','transfer',true,'out');
+('TXN-4008','CUST-40233',3000,'2026-06-20T17:30:00','Beneficiary H','Malaysia','transfer',true,'out'),
+
+-- ===== CUST-50001 : DOCUMENTED SUPPLIER PAYMENT (false positive -> auto-close) =====
+('TXN-5000','CUST-50001',1500,'2026-05-02T10:00:00','AWS Cloud','Malaysia','payment',false,'out'),
+('TXN-5001','CUST-50001',1800,'2026-05-18T10:00:00','Office Rental','Malaysia','payment',false,'out'),
+('TXN-5002','CUST-50001',20000,'2026-06-22T10:00:00','CloudHost Services','Malaysia','transfer',true,'out');
 
 -- --------------------------------------------------------------------
 -- Watchlist entities (multi-list: sanctions, PEP, blacklist, adverse media,

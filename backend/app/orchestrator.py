@@ -33,6 +33,7 @@ from app.agents.watchlist_screening import watchlist_screening
 from app.agents.policy_rag import policy_rag
 from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
+from app.agents.false_positive_review import false_positive_review
 from app.agents.sar_drafting import sar_drafting
 from app.agents.compliance_review import compliance_review
 from app.agents.human_approval import human_approval
@@ -45,14 +46,32 @@ def route_after_data_quality(state: CaseState):
 
 
 # Routing after scoring:
-#   tool failure  -> straight to human review (do NOT draft a SAR on bad data)
-#   high risk     -> draft a SAR
-#   low risk      -> end early
+#   tool failure                          -> human review (no SAR on bad data)
+#   high risk (>= threshold)              -> draft a SAR
+#   sub-threshold but an alert triggered  -> false-positive review
+#   (or a possible watchlist name match)
+#   sub-threshold and nothing triggered   -> auto-close (clean)
 def route_after_scoring(state: CaseState):
     if state.get("errors"):
         return "human_approval"
     escalate_at = get_rules()["scoring"]["escalation_threshold"]
-    return "sar_drafting" if state.get("risk_score", 0) >= escalate_at else END
+    if state.get("risk_score", 0) >= escalate_at:
+        return "sar_drafting"
+
+    triggered = bool(state.get("risk_factors"))
+    wf = state.get("watchlist_findings", {})
+    possible_match = bool(wf.get("is_match")) or any(
+        (wf.get(p) or {}).get("verdict") == "POSSIBLE_MATCH_REQUIRES_REVIEW"
+        for p in ("customer_screening", "recipient_screening"))
+    if triggered or possible_match:
+        return "false_positive_review"
+    return END   # clean: nothing triggered
+
+
+# After the FP review: a clear false positive auto-closes; anything else
+# (incl. a sanctions/PEP name match) goes to a human.
+def route_after_fp(state: CaseState):
+    return END if not state.get("fp_review", {}).get("requires_human_review") else "human_approval"
 
 
 # After the human acts: 'request_more_info' re-runs the investigation (bounded),
@@ -77,6 +96,7 @@ def build_graph():
     g.add_node("policy_rag", policy_rag)
     g.add_node("case_memory", case_memory)
     g.add_node("risk_scoring", risk_scoring)
+    g.add_node("false_positive_review", false_positive_review)
     g.add_node("sar_drafting", sar_drafting)
     g.add_node("compliance_review", compliance_review)
     g.add_node("human_approval", human_approval)
@@ -92,7 +112,10 @@ def build_graph():
         g.add_edge(node, "risk_scoring")
 
     g.add_conditional_edges("risk_scoring", route_after_scoring,
-                            ["sar_drafting", "human_approval", END])
+                            ["sar_drafting", "false_positive_review", "human_approval", END])
+    # FP review: clear false positive -> auto-close; otherwise -> human
+    g.add_conditional_edges("false_positive_review", route_after_fp,
+                            ["human_approval", END])
     g.add_edge("sar_drafting", "compliance_review")
     g.add_edge("compliance_review", "human_approval")
     # human decision: request_more_info loops back to investigate; else END

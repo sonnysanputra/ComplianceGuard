@@ -129,6 +129,19 @@ def main():
         if rev.get("unsupported_claims"):
             print(f"  Flagged       : {rev.get('unsupported_claims')}")
 
+    # ---- False positive review (sub-threshold cases) ----
+    fp = snap.get("fp_review")
+    if fp:
+        print("\n" + "-" * 70)
+        print("FALSE POSITIVE REVIEW:")
+        print("-" * 70)
+        print(f"  Likelihood    : {fp.get('false_positive_likelihood')}")
+        print(f"  Checks        : {fp.get('checks')}")
+        print(f"  Reason        : {fp.get('clearance_reason')}")
+        print(f"  Risk adj.     : {fp.get('risk_adjustment')}")
+        print(f"  Action        : {fp.get('recommended_action')}")
+        print(f"  Needs human   : {fp.get('requires_human_review')}")
+
     # ---- Per-agent confidence (from the A2A message log) ----
     print("\n" + "-" * 70)
     print("AGENT CONFIDENCE:")
@@ -171,8 +184,15 @@ def main():
             print(f"\n✅ Case closed. Decision: {decision}"
                   + (f" — {note}" if note else ""))
             break
+    elif snap.get("fp_review") and not snap["fp_review"].get("requires_human_review"):
+        # Sub-threshold case cleared by the false-positive review
+        persist_case(snap, status="closed_false_positive")
+        print("\n" + "=" * 70)
+        print("  ✅ AUTO-CLOSED as FALSE POSITIVE — "
+              f"{snap['fp_review'].get('recommended_action')}")
+        print("=" * 70)
     else:
-        # Low-risk path: scored under threshold, exited before SAR drafting
+        # Low-risk path: scored under threshold, nothing triggered
         persist_case(snap, status="auto_closed")
         print("\n" + "=" * 70)
         print("  ✅ AUTO-CLOSED — low risk, no SAR needed (early exit saved LLM calls)")

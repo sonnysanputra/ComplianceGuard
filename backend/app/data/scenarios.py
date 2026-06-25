@@ -66,4 +66,15 @@ SCENARIOS = [
         "num_transactions": 1,
         "_expected": "Incomplete data -> NEEDS_MORE_INFORMATION (gate halts before investigation)",
     },
+    {
+        "id": "AML-2026-007",
+        "customer_id": "CUST-50001",
+        "reason": "High-value payment to a new supplier flagged by transaction volume",
+        "recipient": "CloudHost Services",
+        "country": "Malaysia",
+        "total_amount": 20000,
+        "num_transactions": 1,
+        "supporting_document": "INV-2026-552",
+        "_expected": "Low-risk but triggered -> false-positive review -> AUTO-CLOSE (documented)",
+    },
 ]

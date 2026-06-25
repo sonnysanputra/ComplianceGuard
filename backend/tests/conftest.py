@@ -27,6 +27,10 @@ CUSTOMERS = {
                    "occupation": "Freelancer", "declared_income": 6000,
                    "kyc_status": "Completed", "risk_category": "Medium",
                    "account_age_months": 22, "country": "Malaysia", "previous_alerts": 0},
+    "CUST-50001": {"customer_id": "CUST-50001", "name": "Tech Solutions Sdn Bhd",
+                   "occupation": "Business Owner", "declared_income": 30000,
+                   "kyc_status": "Completed", "risk_category": "Low",
+                   "account_age_months": 36, "country": "Malaysia", "previous_alerts": 0},
 }
 
 
@@ -67,6 +71,12 @@ TRANSACTIONS = {
         *[_tx(3000, f"2026-06-20T{9+i:02d}:05:00", f"Beneficiary {chr(65+i)}",
               "Malaysia", True, "out") for i in range(8)],
     ],
+    # documented supplier payment: volume flag, but a new well-documented recipient
+    "CUST-50001": [
+        _tx(1500, "2026-05-02T10:00:00", "AWS Cloud", "Malaysia", False, "out"),
+        _tx(1800, "2026-05-18T10:00:00", "Office Rental", "Malaysia", False, "out"),
+        _tx(20000, "2026-06-22T10:00:00", "CloudHost Services", "Malaysia", True, "out"),
+    ],
 }
 
 WATCHLIST = [
@@ -97,4 +107,8 @@ def offline(monkeypatch):
                         lambda cid, exclude_case_id="": {"cases": [], "decisions": []})
     monkeypatch.setattr("app.agents.data_quality.get_customer", lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.data_quality.get_transactions",
+                        lambda cid: TRANSACTIONS.get(cid, []))
+    monkeypatch.setattr("app.agents.false_positive_review.get_customer",
+                        lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.false_positive_review.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))

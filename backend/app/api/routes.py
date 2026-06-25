@@ -103,6 +103,7 @@ class Alert(BaseModel):
     country: Optional[str] = ""
     total_amount: Optional[int] = 0
     num_transactions: Optional[int] = 0
+    supporting_document: Optional[str] = None   # e.g. invoice ref (aids FP review)
 
 
 class Decision(BaseModel):
@@ -132,6 +133,7 @@ class CaseSnapshot(BaseModel):
     key_drivers: Optional[list] = None
     recommendation: Optional[str] = None
     risk_explanation: Optional[str] = None
+    fp_review: Optional[dict] = None
     sar_draft: Optional[str] = None
     review: Optional[dict] = None
     human_decision: Optional[str] = None
@@ -187,6 +189,7 @@ def _snapshot(case_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"No case '{case_id}'")
 
     dq = v.get("data_quality", {})
+    fp = v.get("fp_review", {})
     awaiting = "human_approval" in (state.next or ())
     if dq and not dq.get("complete", True):
         status = "needs_more_information"
@@ -196,12 +199,15 @@ def _snapshot(case_id: str) -> dict:
         status = "awaiting_decision"
     elif v.get("human_decision"):
         status = "closed"
+    elif fp and not fp.get("requires_human_review"):
+        status = "closed_false_positive"
     else:
         status = "auto_closed"
 
     return {
         "case_id": case_id, "status": status,
         "triage": v.get("triage"), "data_quality": v.get("data_quality"),
+        "fp_review": v.get("fp_review"),
         "transaction_findings": v.get("transaction_findings"),
         "kyc_findings": v.get("kyc_findings"),
         "watchlist_findings": v.get("watchlist_findings"),

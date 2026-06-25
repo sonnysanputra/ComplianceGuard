@@ -29,6 +29,7 @@ class CaseState(TypedDict, total=False):
     risk_factors: list       # explainable breakdown: factor + points + evidence
     risk_explanation: str
     recommendation: str
+    fp_review: dict          # false-positive review outcome (sub-threshold cases)
     sar_draft: str
     review: dict
     human_decision: str
