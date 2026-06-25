@@ -20,7 +20,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 # the investigation agents that run in parallel
 INVESTIGATION = ["transaction_analysis", "transaction_timeline", "kyc_profile",
-                 "watchlist_screening", "policy_rag", "case_memory"]
+                 "watchlist_screening", "adverse_media_screening", "policy_rag",
+                 "case_memory"]
 MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
 
 from app.core.state import CaseState
@@ -31,6 +32,7 @@ from app.agents.transaction_analysis import transaction_analysis
 from app.agents.transaction_timeline import transaction_timeline
 from app.agents.kyc_profile import kyc_profile
 from app.agents.watchlist_screening import watchlist_screening
+from app.agents.adverse_media_screening import adverse_media_screening
 from app.agents.policy_rag import policy_rag
 from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
@@ -101,6 +103,7 @@ def build_graph():
     g.add_node("transaction_timeline", transaction_timeline)
     g.add_node("kyc_profile", kyc_profile)
     g.add_node("watchlist_screening", watchlist_screening)
+    g.add_node("adverse_media_screening", adverse_media_screening)
     g.add_node("policy_rag", policy_rag)
     g.add_node("case_memory", case_memory)
     g.add_node("risk_scoring", risk_scoring)

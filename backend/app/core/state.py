@@ -21,6 +21,7 @@ class CaseState(TypedDict, total=False):
     timeline_findings: dict   # chronological, annotated event timeline
     kyc_findings: dict
     watchlist_findings: dict
+    adverse_media_findings: dict   # negative-news screening (customer + recipient)
     retrieved_policies: list
     risk_score: int          # final blended score (rules + AI)
     rule_score: int          # deterministic baseline

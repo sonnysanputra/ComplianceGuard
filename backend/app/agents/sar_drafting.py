@@ -168,6 +168,10 @@ class SARDraftingAgent(BaseAgent):
                 "best_match": wl.get("best_match"),
                 "list_type": wl.get("list_type"),
                 "match_score": f"{wl.get('match_score')}%" if wl.get("match_score") else None,
+                "adverse_media_verdict": (state.get("adverse_media_findings") or {}).get("verdict"),
+                "adverse_media_hits": "; ".join(
+                    f"{h.get('title')} ({h.get('risk_level')})"
+                    for h in (state.get("adverse_media_findings") or {}).get("all_hits", [])) or None,
                 "required_action": wl.get("required_action"),
             },
             "policy_references": [

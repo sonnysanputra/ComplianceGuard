@@ -17,13 +17,14 @@ from typing import Literal, Union
 from pydantic import BaseModel
 
 SourceType = Literal["transaction", "customer_profile", "watchlist",
-                     "policy", "memory", "analyst_note", "rule"]
+                     "adverse_media", "policy", "memory", "analyst_note", "rule"]
 
 # readable ID prefix per source type, e.g. EV-TXN-001
 _PREFIX = {
     "transaction": "TXN",
     "customer_profile": "CUST",
     "watchlist": "WL",
+    "adverse_media": "AM",
     "policy": "POL",
     "memory": "MEM",
     "analyst_note": "NOTE",

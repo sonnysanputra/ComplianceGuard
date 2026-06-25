@@ -88,6 +88,14 @@ def main():
           f"{' (' + str(rs.get('best_match')) + ', ' + str(rs.get('list_type')) + ' ' + str(rs.get('match_score')) + '%)' if rs.get('best_match') else ''}")
     if wl.get("required_action") and wl.get("is_match") or (rs.get("verdict") == "POSSIBLE_MATCH_REQUIRES_REVIEW"):
         print(f"               action: {wl.get('required_action')}")
+    am = snap.get("adverse_media_findings", {})
+    if am:
+        amline = f"  Adv. media : {am.get('verdict')}"
+        if am.get("negative_news"):
+            amline += f" — {am.get('hit_count')} hit(s), highest {am.get('highest_risk_level')}"
+            top = (am.get("all_hits") or [{}])[0]
+            amline += f"\n               • {top.get('title')} ({top.get('source')}, {top.get('date')})"
+        print(amline)
     print(f"  Memory     : {mem.get('memory_risk_signal')} [{mem.get('memory_risk_direction')}]")
     pols = snap.get("retrieved_policies", [])
     if pols:

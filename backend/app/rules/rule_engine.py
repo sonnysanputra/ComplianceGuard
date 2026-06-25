@@ -164,13 +164,14 @@ def detect_transaction_typology(transactions: list) -> dict:
 # ======================================================================
 def evaluate_aml_rules(customer: dict, transactions: list,
                        watchlist: dict = None, memory: dict = None,
-                       alert: dict = None) -> RuleResult:
+                       alert: dict = None, adverse_media: dict = None) -> RuleResult:
     """Run every AML rule over the case and return the triggered rules, the
     total rule score, and the detected typology. Pure -- no I/O."""
     R = get_rules()
     rules = _typology_rules()
     wf = watchlist or {}
     mem = memory or {}
+    am = adverse_media or {}
     det = detect_transaction_typology(transactions)
     flags = det["flags"]
     tr = det["total_recent"]
@@ -279,6 +280,22 @@ def evaluate_aml_rules(customer: dict, transactions: list,
                                    evidence_items=[ev("transaction", (alert or {}).get("recipient", "recipient"),
                                        "country", (alert or {}).get("country", ""),
                                        "Recipient jurisdiction is on the high-risk list")]))
+
+    # --- adverse media / negative news ---
+    amcfg = R.get("adverse_media")
+    if amcfg and am.get("negative_news"):
+        critical = am.get("highest_risk_level") == "CRITICAL"
+        points = amcfg.get("critical_risk_points", amcfg["risk_points"]) if critical \
+            else amcfg["risk_points"]
+        hits = am.get("all_hits", [])
+        titles = "; ".join(h.get("title", "") for h in hits[:2])
+        fired.append(TriggeredRule(
+            amcfg["rule_id"], amcfg["name"], points, amcfg["severity"],
+            f"{am.get('hit_count', len(hits))} negative-news hit(s) "
+            f"(highest {am.get('highest_risk_level')}): {titles}",
+            source="Adverse media screening",
+            evidence_items=[ev("adverse_media", h.get("name"), "negative_news",
+                               h.get("risk_level"), h.get("title")) for h in hits]))
 
     # --- prior alert history ---
     hist = R["history"]

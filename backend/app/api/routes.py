@@ -54,13 +54,14 @@ from app.agents.data_quality import data_quality
 from app.agents.transaction_analysis import transaction_analysis
 from app.agents.kyc_profile import kyc_profile
 from app.agents.watchlist_screening import watchlist_screening
+from app.agents.adverse_media_screening import adverse_media_screening
 from app.agents.policy_rag import policy_rag
 from app.agents.case_memory import case_memory
 from app.agents.risk_scoring import risk_scoring
 
 AGENTS = {a.name: a for a in [
     alert_intake, data_quality, transaction_analysis, kyc_profile,
-    watchlist_screening, policy_rag, case_memory, risk_scoring,
+    watchlist_screening, adverse_media_screening, policy_rag, case_memory, risk_scoring,
 ]}
 
 # human-readable labels for streamed progress events
@@ -70,6 +71,7 @@ LABELS = {
     "transaction_analysis": "Transaction Analysis Agent",
     "kyc_profile": "KYC Profile Agent",
     "watchlist_screening": "Watchlist Screening Agent",
+    "adverse_media_screening": "Adverse Media Screening Agent",
     "policy_rag": "Policy RAG Agent",
     "case_memory": "Memory Agent",
     "risk_scoring": "Risk Scoring Agent",
@@ -135,6 +137,7 @@ class CaseSnapshot(BaseModel):
     timeline_findings: Optional[dict] = None
     kyc_findings: Optional[dict] = None
     watchlist_findings: Optional[dict] = None
+    adverse_media_findings: Optional[dict] = None
     memory_findings: Optional[dict] = None
     retrieved_policies: Optional[list] = None
     risk_score: Optional[int] = None
@@ -218,6 +221,7 @@ def _snapshot(case_id: str) -> dict:
         "timeline_findings": v.get("timeline_findings"),
         "kyc_findings": v.get("kyc_findings"),
         "watchlist_findings": v.get("watchlist_findings"),
+        "adverse_media_findings": v.get("adverse_media_findings"),
         "memory_findings": v.get("memory_findings"),
         "retrieved_policies": v.get("retrieved_policies"),
         "risk_score": v.get("risk_score"), "rule_score": v.get("rule_score"),

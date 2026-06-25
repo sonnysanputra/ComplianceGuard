@@ -109,6 +109,15 @@ unclear_purpose:
   severity: HIGH
   risk_points: 15
 
+# Negative news (fraud, investigations, enforcement) -- a real risk signal a
+# sanctions/PEP list does not capture. CRITICAL hits are weighted higher.
+adverse_media:
+  rule_id: AML-ADVMEDIA-001
+  name: Adverse Media / Negative News
+  severity: HIGH
+  risk_points: 20
+  critical_risk_points: 30
+
 watchlist:
   match_rule_id: AML-WL-001
   match_name: Watchlist Match

@@ -70,7 +70,8 @@ class RiskScoringAgent(BaseAgent):
         # breakdown. Risk scoring only blends this with the LLM and decides routing.
         customer = get_customer(alert["customer_id"])
         transactions = get_transactions(alert["customer_id"])
-        result = evaluate_aml_rules(customer, transactions, wf, mem, alert)
+        am = state.get("adverse_media_findings", {})
+        result = evaluate_aml_rules(customer, transactions, wf, mem, alert, am)
 
         tf = result.flags
         typology = result.typology
@@ -109,6 +110,8 @@ class RiskScoringAgent(BaseAgent):
                 f"- prior alerts          : {kf['previous_alerts']}\n"
                 f"- watchlist             : match={wf['is_match']}, verdict={wf.get('verdict')}\n"
                 f"- high-risk country     : {wf['high_risk_country']}\n"
+                f"- adverse media         : {am.get('verdict', 'NO_ADVERSE_MEDIA')} "
+                f"({am.get('hit_count', 0)} hit(s), highest {am.get('highest_risk_level', 'NONE')})\n"
                 f"- LONG-TERM MEMORY      : {mem.get('memory_risk_signal', 'no prior history')}\n"
                 f"- relevant policy       : "
                 f"{(policies[0]['policy_id'] + ': ' + policies[0]['content']) if policies else 'none'}\n\n"

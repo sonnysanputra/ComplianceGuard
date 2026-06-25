@@ -70,9 +70,10 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
         ("6. KYC / Customer Profile Review",
          _kv(kyc, "consistency", "key_concern", "income_ratio", "checks_failed",
              "edd_required")),
-        ("7. Watchlist / Sanctions Screening",
+        ("7. Watchlist / Sanctions / Adverse Media Screening",
          _kv(wl, "customer_verdict", "recipient_verdict", "best_match",
-             "list_type", "match_score", "required_action")),
+             "list_type", "match_score", "adverse_media_verdict",
+             "adverse_media_hits", "required_action")),
         ("8. Policy References",
          [f"{p.get('policy_id')}: {p.get('title')} (section {p.get('section')})"
           + (f" [{p.get('source')}]" if p.get("source") else "")
