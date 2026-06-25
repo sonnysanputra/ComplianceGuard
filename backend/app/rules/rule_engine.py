@@ -16,6 +16,7 @@ from country_risk.yaml. Both are reloadable at runtime via reload_rules().
 import logging
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
 
 import yaml
 
@@ -64,23 +65,55 @@ def reload_rules() -> dict:
 
 
 # ======================================================================
-# Transaction typology detection
+# Transaction typology detection (driven by the declarative typology_rules)
 # ======================================================================
+_FLAG_TO_TYPOLOGY = {
+    "money_mule": "money mule",
+    "structuring": "structuring",
+    "rapid_dispersion": "layering/dispersion",
+    "new_overseas_recipient": "high-risk overseas transfer",
+    "volume_spike": "volume spike",
+}
+# maps the internal flag name -> the YAML rule's `typology` field
+_FLAG_TO_RULE = {
+    "structuring": "structuring",
+    "money_mule": "money_mule",
+    "rapid_dispersion": "layering_dispersion",
+    "new_overseas_recipient": "high_risk_overseas_transfer",
+    "volume_spike": "volume_spike",
+}
+
+
+def _typology_rules() -> dict:
+    return {r["typology"]: r for r in get_rules().get("typology_rules", [])}
+
+
 def _classify(flags: dict) -> str:
-    if flags["money_mule"]:             return "money mule"
-    if flags["structuring"]:            return "structuring"
-    if flags["rapid_dispersion"]:       return "layering/dispersion"
-    if flags["new_overseas_recipient"]: return "high-risk overseas transfer"
-    if flags["volume_spike"]:           return "volume spike"
+    for flag, label in _FLAG_TO_TYPOLOGY.items():
+        if flags.get(flag):
+            return label
     return "none"
 
 
+def _money(x) -> str:
+    return f"{int(x):,}"
+
+
+def _render(template: str, ctx: dict) -> str:
+    """Render an evidence_template, tolerating missing placeholders."""
+    if not template:
+        return ""
+    try:
+        return template.format_map(defaultdict(lambda: "?", ctx))
+    except Exception:
+        return template
+
+
 def detect_transaction_typology(transactions: list) -> dict:
-    """Aggregate transaction facts and apply the deterministic typology rules."""
-    R = get_rules()
-    s, mm = R["structuring"], R["money_mule"]
-    lay, vs = R["layering_dispersion"], R["volume_spike"]
-    hrc = high_risk_countries()
+    """Aggregate transaction facts and apply the SC red-flag typology rules
+    (conditions come from typology_rules in aml_rules.yaml)."""
+    rules = _typology_rules()
+    crisk = get_country_risk()
 
     outgoing = [t for t in transactions if t.get("direction", "out") == "out"]
     incoming = [t for t in transactions if t.get("direction") == "in"]
@@ -95,25 +128,35 @@ def detect_transaction_typology(transactions: list) -> dict:
     amounts = [t["amount"] for t in recent]
     countries = sorted({t["country"] for t in recent})
 
+    sc = rules["structuring"]["conditions"]
+    mmc = rules["money_mule"]["conditions"]
+    layc = rules["layering_dispersion"]["conditions"]
+    geoc = rules["high_risk_overseas_transfer"]["conditions"]
+    vsc = rules["volume_spike"]["conditions"]
+    allowed_levels = set(geoc.get("recipient_country_risk_in", []))
+
+    structuring_count = sum(
+        1 for a in amounts
+        if sc["amount_min_ratio_to_threshold"] * sc["internal_review_threshold"]
+        <= a < sc["internal_review_threshold"])
+
     flags = {
-        "structuring": (
-            sum(1 for a in amounts
-                if s["lower_bound_ratio"] * s["internal_review_threshold"]
-                <= a < s["internal_review_threshold"]) >= s["min_transactions"]
-            and window <= s["window_hours"]),
+        "structuring": structuring_count >= sc["min_transactions"] and window <= sc["window_hours"],
         "money_mule": (bool(incoming)
-                       and incoming_total >= mm["incoming_min_amount"]
-                       and len(recent) >= mm["min_new_recipients"]
-                       and total_recent >= mm["outgoing_ratio_min"] * max(incoming_total, 1)),
-        "rapid_dispersion": (distinct >= lay["min_recipients"]
-                             and window <= lay["window_hours"]),
-        "new_overseas_recipient": any(c in hrc for c in countries),
-        "volume_spike": total_recent > vs["baseline_multiplier"] * max(avg_hist, 1),
+                       and incoming_total >= mmc["incoming_amount_min"]
+                       and len(recent) >= mmc["min_new_recipients"]
+                       and total_recent >= mmc["outgoing_ratio_min"] * max(incoming_total, 1)
+                       and window <= mmc["max_forwarding_hours"]),
+        "rapid_dispersion": (distinct >= layc["min_distinct_recipients"]
+                             and window <= layc["window_hours"]),
+        "new_overseas_recipient": any(crisk.get(c) in allowed_levels for c in countries),
+        "volume_spike": total_recent > vsc["baseline_multiplier"] * max(avg_hist, 1),
     }
     return {
         "typology": _classify(flags), "flags": flags,
         "total_recent": total_recent, "distinct_recipients": distinct,
         "window_hours": round(window, 1), "amounts_recent": amounts,
+        "structuring_count": structuring_count,
         "incoming_total": incoming_total, "avg_historical": round(avg_hist),
         "destination_countries": countries,
     }
@@ -128,42 +171,37 @@ def evaluate_aml_rules(customer: dict, transactions: list,
     """Run every AML rule over the case and return the triggered rules, the
     total rule score, and the detected typology. Pure -- no I/O."""
     R = get_rules()
+    rules = _typology_rules()
     wf = watchlist or {}
     mem = memory or {}
     det = detect_transaction_typology(transactions)
     flags = det["flags"]
-    tr, window, distinct = det["total_recent"], det["window_hours"], det["distinct_recipients"]
+    tr = det["total_recent"]
     fired: list[TriggeredRule] = []
+
+    amounts = det["amounts_recent"]
+    ctx = {
+        "count": det["structuring_count"] or len(amounts),
+        "min_amount": _money(min(amounts)) if amounts else "0",
+        "max_amount": _money(max(amounts)) if amounts else "0",
+        "window_hours": det["window_hours"],
+        "incoming_total": _money(det["incoming_total"]),
+        "total_recent": _money(tr),
+        "distinct": det["distinct_recipients"],
+        "avg_historical": _money(det["avg_historical"]),
+        "countries": ", ".join(det["destination_countries"]),
+    }
+
+    # --- SC red-flag typology rules (metadata + evidence_template from YAML) ---
+    for flag, typ in _FLAG_TO_RULE.items():
+        if flags.get(flag) and typ in rules:
+            r = rules[typ]
+            fired.append(TriggeredRule(r["rule_id"], r["name"], r["risk_points"],
+                                       r["severity"], _render(r.get("evidence_template"), ctx),
+                                       source="SC Malaysia red-flag typology"))
 
     def fire(cfg, points, evidence):
         fired.append(TriggeredRule(cfg["rule_id"], cfg["name"], points, cfg["severity"], evidence))
-
-    # --- transaction typology rules ---
-    if flags["structuring"]:
-        s = R["structuring"]
-        n = sum(1 for a in det["amounts_recent"]
-                if s["lower_bound_ratio"] * s["internal_review_threshold"]
-                <= a < s["internal_review_threshold"])
-        amt = det["amounts_recent"][0] if det["amounts_recent"] else 0
-        fire(s, s["risk_points"],
-             f"{n} transfers of ~RM{amt} (just under RM{s['internal_review_threshold']:,}) "
-             f"within {window}h to a new recipient")
-    if flags["money_mule"]:
-        mm = R["money_mule"]
-        fire(mm, mm["risk_points"],
-             f"Inbound RM{det['incoming_total']} forwarded as RM{tr} to {distinct} new recipient(s)")
-    if flags["rapid_dispersion"]:
-        lay = R["layering_dispersion"]
-        fire(lay, lay["risk_points"],
-             f"Funds dispersed across {distinct} new recipients within {window}h")
-    if flags["new_overseas_recipient"]:
-        geo = R["high_risk_overseas"]
-        fire(geo, geo["risk_points"],
-             f"Transfer to high-risk jurisdiction(s): {', '.join(det['destination_countries'])}")
-    if flags["volume_spike"]:
-        vs = R["volume_spike"]
-        fire(vs, vs["risk_points"],
-             f"Burst of RM{tr} far exceeds the customer's baseline (avg RM{det['avg_historical']})")
 
     # --- KYC income / activity mismatch ---
     kyc = R["kyc"]
@@ -204,11 +242,13 @@ def evaluate_aml_rules(customer: dict, transactions: list,
                                    memcfg["repeat_recipient_points"], memcfg["recipient_severity"],
                                    "Same recipient seen in a previous investigation"))
 
-    # --- benign-history reduction (negative) ---
+    # --- false-positive reduction (negative adjustment) ---
     if mem.get("memory_risk_direction") == "reduce":
         fp = R["false_positive"]
-        fire(fp, -fp["risk_reduction_points"],
-             f"{mem.get('previous_false_positives')} prior false positive(s), no escalations")
+        ev = _render(fp.get("evidence_template"),
+                     {"prior_false_positives": mem.get("previous_false_positives", 0)})
+        fired.append(TriggeredRule(fp["rule_id"], fp["name"], fp["risk_adjustment"],
+                                   fp["severity"], ev, source="False positive check"))
 
     total = max(0, min(sum(r.points for r in fired), 100))
     return RuleResult(fired, total, det["typology"], flags)

@@ -1,7 +1,9 @@
-# High-risk jurisdictions and their risk level. Edit + POST /rules/reload.
-# In production this would be sourced from FATF / sanctions-list feeds.
+# High-risk jurisdictions and their FATF-style risk level. Edit + POST /rules/reload.
+#   CALL_FOR_ACTION     = FATF "black list" (high-risk, counter-measures)
+#   INCREASED_MONITORING = FATF "grey list" (jurisdictions under increased monitoring)
+#   HIGH                 = internally designated high-risk
 countries:
-  Cambodia: High
-  Myanmar: High
-  Iran: Critical
-  North Korea: Critical
+  North Korea: CALL_FOR_ACTION
+  Iran: CALL_FOR_ACTION
+  Myanmar: CALL_FOR_ACTION
+  Cambodia: INCREASED_MONITORING
