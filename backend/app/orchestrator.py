@@ -43,39 +43,67 @@ from app.agents.compliance_review import compliance_review
 from app.agents.human_approval import human_approval
 
 
-# POOR / CRITICAL_MISSING data halts here -- request more info instead of
-# investigating blind. GOOD / PARTIAL data can proceed.
+# below this data-quality score we cannot score reliably -> stop the case
+DATA_QUALITY_FLOOR = 60
+
+
+def _watchlist_flagged(wf: dict) -> bool:
+    """A confirmed OR possible watchlist / sanctions match on either party.
+    A name match is never auto-cleared -- it always needs a human."""
+    return bool(wf.get("is_match")) or any(
+        (wf.get(p) or {}).get("verdict") == "POSSIBLE_MATCH_REQUIRES_REVIEW"
+        for p in ("customer_screening", "recipient_screening"))
+
+
+# FAIL-SAFE GATE. Critical data missing halts the case BEFORE investigation:
+#   - customer/KYC profile missing      -> NEEDS_MORE_INFORMATION
+#   - transaction history unavailable   -> NEEDS_MORE_INFORMATION
+# (both are CRITICAL_MISSING in the data-quality agent -> can_continue = False).
 def route_after_data_quality(state: CaseState):
     dq = state.get("data_quality", {})
     return INVESTIGATION if dq.get("can_continue", dq.get("complete", True)) else END
 
 
-# Routing after scoring:
-#   tool failure                          -> human review (no SAR on bad data)
-#   high risk (>= threshold)              -> draft a SAR
-#   sub-threshold but an alert triggered  -> false-positive review
-#   (or a possible watchlist name match)
-#   sub-threshold and nothing triggered   -> auto-close (clean)
+# FAIL-SAFE ROUTING after scoring -- strictest rules first. The system must
+# NEVER auto-close a case it could not reliably assess:
+#   1. data-quality score < 60          -> stop (request more information)
+#   2. any tool failed (watchlist/RAG)  -> manual review (never auto-close on bad data)
+#   3. high risk (>= threshold)         -> draft a SAR (still ends at human approval)
+#   4. watchlist/sanctions match        -> manual review (never auto-cleared)
+#   5. degraded (PARTIAL) data          -> manual review
+#   6. sub-threshold but triggered      -> false-positive review
+#   7. clean and low risk               -> auto-close
 def route_after_scoring(state: CaseState):
+    dq = state.get("data_quality", {})
+    wf = state.get("watchlist_findings", {})
+
+    # 1. data too poor to score reliably (safety net; the gate usually catches this)
+    if dq.get("quality_score", 100) < DATA_QUALITY_FLOOR:
+        return END
+
+    # 2. a screening tool failed -> a human must review (no auto-close, no auto-SAR)
     if state.get("errors"):
         return "human_approval"
+
+    # 3. high risk -> SAR drafting
     escalate_at = get_rules()["scoring"]["escalation_threshold"]
     if state.get("risk_score", 0) >= escalate_at:
         return "sar_drafting"
 
-    # PARTIAL data quality means we investigated, but a human must sign off --
-    # don't auto-close a case built on degraded data.
-    if (state.get("data_quality") or {}).get("severity") == "PARTIAL":
+    # 4. a sanctions / watchlist match is never auto-cleared -> manual review
+    if _watchlist_flagged(wf):
         return "human_approval"
 
-    triggered = bool(state.get("risk_factors"))
-    wf = state.get("watchlist_findings", {})
-    possible_match = bool(wf.get("is_match")) or any(
-        (wf.get(p) or {}).get("verdict") == "POSSIBLE_MATCH_REQUIRES_REVIEW"
-        for p in ("customer_screening", "recipient_screening"))
-    if triggered or possible_match:
+    # 5. degraded data -> manual sign-off
+    if dq.get("severity") == "PARTIAL":
+        return "human_approval"
+
+    # 6. sub-threshold but an alert triggered -> false-positive review
+    if state.get("risk_factors"):
         return "false_positive_review"
-    return END   # clean: nothing triggered
+
+    # 7. clean: nothing triggered -> auto-close
+    return END
 
 
 # After the FP review: a clear false positive auto-closes; anything else
