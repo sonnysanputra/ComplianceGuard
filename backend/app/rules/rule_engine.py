@@ -76,6 +76,16 @@ def _typology_rules() -> dict:
     return {r["typology"]: r for r in get_rules().get("typology_rules", [])}
 
 
+# values that mean "no real economic purpose was stated"
+_VAGUE_PURPOSES = {"", "unknown", "unspecified", "n/a", "na", "none",
+                   "other", "unclear", "personal", "misc", "-"}
+
+
+def purpose_is_clear(purpose) -> bool:
+    """True if a transaction carries a meaningful stated economic purpose."""
+    return bool(purpose) and str(purpose).strip().lower() not in _VAGUE_PURPOSES
+
+
 def _classify(flags: dict) -> str:
     for flag, label in _FLAG_TO_TYPOLOGY.items():
         if flags.get(flag):
@@ -224,6 +234,22 @@ def evaluate_aml_rules(customer: dict, transactions: list,
     def fire(cfg, points, evidence, items=None):
         fired.append(TriggeredRule(cfg["rule_id"], cfg["name"], points, cfg["severity"],
                                    evidence, evidence_items=items or []))
+
+    # --- unclear economic purpose on a high-risk overseas transfer ---
+    up = R.get("unclear_purpose")
+    if up:
+        overseas_unclear = [
+            t for t in recent
+            if t.get("country") and risk_level(t["country"]) in geo_levels
+            and not purpose_is_clear(t.get("transaction_purpose"))]
+        if overseas_unclear:
+            fire(up, up["risk_points"],
+                 f"{len(overseas_unclear)} transfer(s) to a high-risk jurisdiction with "
+                 f"no clear economic purpose stated",
+                 items=[ev("transaction", t.get("transaction_id"), "transaction_purpose",
+                           t.get("transaction_purpose") or "(none)",
+                           "No stated economic purpose for a high-risk overseas transfer")
+                        for t in overseas_unclear])
 
     # --- KYC income / activity mismatch ---
     kyc = R["kyc"]

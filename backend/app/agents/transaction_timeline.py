@@ -90,6 +90,8 @@ class TransactionTimelineAgent(BaseAgent):
                 "country": country,
                 "transaction_type": t.get("transaction_type"),
                 "new_recipient": is_new,
+                "purpose": t.get("transaction_purpose"),
+                "source_of_funds": t.get("source_of_funds"),
                 "risk_note": note,
             })
             seen_recipients.add(recipient)

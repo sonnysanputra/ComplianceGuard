@@ -37,12 +37,14 @@ CUSTOMERS = {
 _tx_seq = [0]
 
 
-def _tx(amount, t, recipient, country, new, direction):
+def _tx(amount, t, recipient, country, new, direction, purpose=None, source=None):
     _tx_seq[0] += 1
     return {"transaction_id": f"TXN-{8800 + _tx_seq[0]}",
             "amount": amount, "date_time": t, "recipient": recipient,
             "country": country, "transaction_type": "transfer",
-            "is_new_recipient": new, "direction": direction}
+            "is_new_recipient": new, "direction": direction,
+            "transaction_purpose": purpose, "source_of_funds": source,
+            "supporting_document_url": None, "relationship_to_recipient": None}
 
 
 TRANSACTIONS = {
@@ -80,7 +82,8 @@ TRANSACTIONS = {
     "CUST-50001": [
         _tx(1500, "2026-05-02T10:00:00", "AWS Cloud", "Malaysia", False, "out"),
         _tx(1800, "2026-05-18T10:00:00", "Office Rental", "Malaysia", False, "out"),
-        _tx(20000, "2026-06-22T10:00:00", "CloudHost Services", "Malaysia", True, "out"),
+        _tx(20000, "2026-06-22T10:00:00", "CloudHost Services", "Malaysia", True, "out",
+            purpose="Monthly cloud hosting subscription", source="Business operating revenue"),
     ],
 }
 

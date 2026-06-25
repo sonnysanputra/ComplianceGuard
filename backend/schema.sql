@@ -34,18 +34,31 @@ insert into customers values
 -- Transactions  (direction: 'in' = incoming, 'out' = outgoing)
 -- --------------------------------------------------------------------
 create table transactions (
-    transaction_id   text primary key,
-    customer_id      text references customers(customer_id),
-    amount           integer,
-    date_time        timestamp,
-    recipient        text,
-    country          text,
-    transaction_type text,
-    is_new_recipient boolean,
-    direction        text
+    transaction_id           text primary key,
+    customer_id              text references customers(customer_id),
+    amount                   integer,
+    date_time                timestamp,
+    recipient                text,
+    country                  text,
+    transaction_type         text,
+    is_new_recipient         boolean,
+    direction                text,
+    -- economic background (per SC guidance on clarifying purpose of unusual txns)
+    transaction_purpose      text,
+    source_of_funds          text,
+    supporting_document_url  text,
+    relationship_to_recipient text
 );
+-- For existing installs:
+alter table transactions add column if not exists transaction_purpose       text;
+alter table transactions add column if not exists source_of_funds           text;
+alter table transactions add column if not exists supporting_document_url    text;
+alter table transactions add column if not exists relationship_to_recipient text;
 
-insert into transactions values
+insert into transactions
+    (transaction_id, customer_id, amount, date_time, recipient, country,
+     transaction_type, is_new_recipient, direction)
+values
 -- ===== CUST-10291 : STRUCTURING (3x just under RM10k threshold, overseas) =====
 ('TXN-9001','CUST-10291',9800,'2026-06-22T09:15:00','Global Trade Ltd','Cambodia','transfer',true,'out'),
 ('TXN-9002','CUST-10291',9800,'2026-06-22T11:40:00','Global Trade Ltd','Cambodia','transfer',true,'out'),
@@ -82,6 +95,19 @@ insert into transactions values
 ('TXN-5000','CUST-50001',1500,'2026-05-02T10:00:00','AWS Cloud','Malaysia','payment',false,'out'),
 ('TXN-5001','CUST-50001',1800,'2026-05-18T10:00:00','Office Rental','Malaysia','payment',false,'out'),
 ('TXN-5002','CUST-50001',20000,'2026-06-22T10:00:00','CloudHost Services','Malaysia','transfer',true,'out');
+
+-- ---- economic background (purpose / source of funds / relationship) ----
+-- Documented supplier payment: clear purpose + source + invoice -> supports a
+-- false-positive clearance.
+update transactions set
+    transaction_purpose       = 'Monthly cloud hosting subscription',
+    source_of_funds           = 'Business operating revenue',
+    supporting_document_url   = 'https://docs.compliguard.local/invoices/INV-2026-552.pdf',
+    relationship_to_recipient = 'Supplier'
+where transaction_id = 'TXN-5002';
+
+-- The structuring transfers to Cambodia deliberately have NO stated purpose,
+-- so the "Unclear Economic Purpose (High-Risk Transfer)" rule fires.
 
 -- --------------------------------------------------------------------
 -- Watchlist entities (multi-list: sanctions, PEP, blacklist, adverse media,

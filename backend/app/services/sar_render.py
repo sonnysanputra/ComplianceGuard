@@ -48,9 +48,10 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
         arrow = "IN <-" if str(t.get("direction", "")).upper() == "IN" else "OUT ->"
         when = t.get("time") or t.get("date", "-")
         ttype = t.get("transaction_type") or t.get("type", "-")
+        purpose = f"  purpose: {t['purpose']}" if t.get("purpose") else "  purpose: (none stated)"
         note = f"  -- {t['risk_note']}" if t.get("risk_note") else ""
         return (f"{when}  |  {arrow} RM{t.get('amount', 0):,}  "
-                f"{t.get('recipient', '-')} ({t.get('country', '-')}, {ttype}){tag}{note}")
+                f"{t.get('recipient', '-')} ({t.get('country', '-')}, {ttype}){tag}{purpose}{note}")
 
     return [
         ("1. Case Information",

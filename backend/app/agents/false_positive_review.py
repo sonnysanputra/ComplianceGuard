@@ -18,7 +18,7 @@ verification, even when the false-positive indicators are otherwise strong.
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
-from app.rules.rule_engine import get_rules
+from app.rules.rule_engine import get_rules, purpose_is_clear
 from app.tools.db import get_customer, get_transactions
 
 SYSTEM_PROMPT = """You are an AML false-positive reviewer. Given the alert and a set
@@ -45,8 +45,20 @@ class FalsePositiveReviewAgent(BaseAgent):
         hist_to_recipient = [t for t in txns
                              if (t.get("recipient") or "").strip().lower() == recipient
                              and not t.get("is_new_recipient", False)]
-        recipient_known = bool(hist_to_recipient) or bool(alert.get("recipient_known"))
-        supporting_document = bool(alert.get("supporting_document"))
+        # the transactions this alert is actually about (the new-recipient transfers)
+        flagged = [t for t in txns
+                   if t.get("is_new_recipient") and t.get("direction", "out") == "out"]
+        relevant = flagged or hist_to_recipient
+
+        recipient_known = bool(hist_to_recipient) or bool(alert.get("recipient_known")) \
+            or any(purpose_is_clear(t.get("relationship_to_recipient")) for t in relevant)
+        # economic background: clear purpose, known source of funds, a stated relationship
+        economic_purpose_clear = (not relevant) or all(
+            purpose_is_clear(t.get("transaction_purpose")) for t in relevant)
+        source_of_funds_known = bool(relevant) and all(
+            bool(t.get("source_of_funds")) for t in relevant)
+        supporting_document = bool(alert.get("supporting_document")) or any(
+            t.get("supporting_document_url") for t in relevant)
         amount = alert.get("total_amount", 0) or 0
         if hist_to_recipient:
             amount_consistent = amount <= 1.5 * max(t["amount"] for t in hist_to_recipient)
@@ -62,6 +74,8 @@ class FalsePositiveReviewAgent(BaseAgent):
 
         checks = {
             "recipient_known": recipient_known,
+            "economic_purpose_clear": economic_purpose_clear,
+            "source_of_funds_known": source_of_funds_known,
             "supporting_document_exists": supporting_document,
             "amount_consistent": amount_consistent,
             "no_watchlist_match": no_watchlist_match,
@@ -95,7 +109,8 @@ class FalsePositiveReviewAgent(BaseAgent):
             requires_human = True
             recommended = (f"Refer to compliance officer for "
                            f"{wf.get('list_type') or 'watchlist'} name-match verification.")
-        elif likelihood == "HIGH" and profile_consistent and amount_consistent:
+        elif (likelihood == "HIGH" and profile_consistent and amount_consistent
+              and economic_purpose_clear):
             requires_human = False
             recommended = "Auto-close with audit note."
         else:
@@ -130,7 +145,9 @@ class FalsePositiveReviewAgent(BaseAgent):
     @staticmethod
     def _heuristic(checks: dict) -> str:
         passed = sum(1 for v in checks.values() if v)
-        return "HIGH" if passed >= 4 else "MEDIUM" if passed >= 2 else "LOW"
+        total = max(len(checks), 1)
+        ratio = passed / total
+        return "HIGH" if ratio >= 0.7 else "MEDIUM" if ratio >= 0.4 else "LOW"
 
 
 false_positive_review = FalsePositiveReviewAgent()

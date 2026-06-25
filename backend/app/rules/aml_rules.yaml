@@ -100,6 +100,15 @@ kyc:
   income_mismatch_ratio: 2.0
   risk_points: 20
 
+# Per SC guidance, unusual transactions should have a clear economic purpose.
+# An overseas transfer to a high-risk jurisdiction with NO stated purpose is an
+# escalation on top of the geographic risk.
+unclear_purpose:
+  rule_id: AML-PURPOSE-001
+  name: Unclear Economic Purpose (High-Risk Transfer)
+  severity: HIGH
+  risk_points: 15
+
 watchlist:
   match_rule_id: AML-WL-001
   match_name: Watchlist Match
