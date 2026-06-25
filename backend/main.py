@@ -111,6 +111,15 @@ def main():
     print(f"   ├─ rule-based baseline : {snap.get('rule_score')}/100")
     print(f"   └─ Qwen AI assessment  : {snap.get('ai_score')}/100")
 
+    prio = snap.get("priority")
+    if prio:
+        from app.core.priority import sla_label, sla_due_at
+        due = sla_due_at(prio)
+        print(f"\nPriority   : {prio} — {sla_label(prio)}")
+        print(f"   reason  : {snap.get('priority_reason')}")
+        if due:
+            print(f"   SLA due : {due[:16].replace('T', ' ')}")
+
     factors = snap.get("risk_factors", [])
     if factors:
         print("\nTriggered AML Rules (rule engine):")

@@ -54,8 +54,8 @@ def sar_to_sections(pkg: dict, human_review: dict | None = None) -> list[tuple[s
 
     return [
         ("1. Case Information",
-         _kv(ci, "case_id", "alert_id", "alert_type", "priority", "status",
-             "report_type", "generated_at")),
+         _kv(ci, "case_id", "alert_id", "alert_type", "priority", "priority_reason",
+             "status", "report_type", "generated_at")),
         ("2. Customer Information",
          _kv(cust, "customer_id", "name", "occupation", "declared_income",
              "account_age_months", "risk_category", "kyc_status", "country")),

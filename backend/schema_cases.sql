@@ -14,15 +14,25 @@ create table if not exists cases (
     alert_type     text,
     typology       text,
     priority       text,
-    status         text,            -- awaiting_decision | closed | auto_closed
+    status         text,            -- see app/core/case_status.py (NEW .. CLOSED)
     risk_score     integer,
     rule_score     integer,
     ai_score       integer,
     risk_level     text,
     recommendation text,
+    priority       text,            -- P1 | P2 | P3 | P4
+    priority_reason text,           -- why this priority was assigned
+    sla_due_at     timestamptz,     -- review deadline derived from priority
+    assigned_to    text,            -- analyst / queue the case is assigned to
     created_at     timestamptz default now(),
     updated_at     timestamptz default now()
 );
+
+-- For existing installs (the columns above are added idempotently):
+alter table cases add column if not exists priority        text;
+alter table cases add column if not exists priority_reason text;
+alter table cases add column if not exists sla_due_at      timestamptz;
+alter table cases add column if not exists assigned_to     text;
 
 -- The audit timeline: one row per agent action
 create table if not exists case_events (

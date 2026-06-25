@@ -30,6 +30,8 @@ class CaseState(TypedDict, total=False):
     risk_factors: list       # explainable breakdown: factor + points + evidence
     risk_explanation: str
     recommendation: str
+    priority: str            # risk-aware case priority P1-P4 (supersedes intake's)
+    priority_reason: str     # why this priority was assigned
     fp_review: dict          # false-positive review outcome (sub-threshold cases)
     sar_package: dict        # structured 12-section SAR draft (regulator style)
     sar_draft: str           # rendered Markdown of the SAR package

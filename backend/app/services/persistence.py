@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.tools.db import client
 from app.core.case_status import is_valid_transition, status_for_decision, CaseStatus
+from app.core.priority import sla_due_at
 
 logger = logging.getLogger(__name__)
 
@@ -35,27 +36,33 @@ def persist_case(state: dict, status: str) -> bool:
         tri = state.get("triage", {})
         tf = state.get("transaction_findings", {})
 
-        # capture the prior status so we can log the transition
-        prev = (db.table("cases").select("status")
+        # capture the prior status + creation time (so the SLA stays anchored)
+        prev = (db.table("cases").select("status, created_at")
                 .eq("case_id", case_id).execute().data or [])
         old_status = prev[0]["status"] if prev else None
+        created = prev[0].get("created_at") if prev else None
+
+        # risk-aware priority (set by risk scoring); fall back to intake's provisional
+        priority = state.get("priority") or tri.get("priority")
 
         # 1) the case row (upsert on case_id)
         db.table("cases").upsert({
-            "case_id":        case_id,
-            "customer_id":    alert.get("customer_id"),
-            "alert_reason":   alert.get("reason"),
-            "recipient":      alert.get("recipient"),
-            "alert_type":     tri.get("alert_type"),
-            "typology":       tf.get("typology"),
-            "priority":       tri.get("priority"),
-            "status":         status,
-            "risk_score":     state.get("risk_score"),
-            "rule_score":     state.get("rule_score"),
-            "ai_score":       state.get("ai_score"),
-            "risk_level":     state.get("risk_level"),
-            "recommendation": state.get("recommendation"),
-            "updated_at":     _now(),
+            "case_id":         case_id,
+            "customer_id":     alert.get("customer_id"),
+            "alert_reason":    alert.get("reason"),
+            "recipient":       alert.get("recipient"),
+            "alert_type":      tri.get("alert_type"),
+            "typology":        tf.get("typology"),
+            "priority":        priority,
+            "priority_reason": state.get("priority_reason"),
+            "sla_due_at":      sla_due_at(priority, created),
+            "status":          status,
+            "risk_score":      state.get("risk_score"),
+            "rule_score":      state.get("rule_score"),
+            "ai_score":        state.get("ai_score"),
+            "risk_level":      state.get("risk_level"),
+            "recommendation":  state.get("recommendation"),
+            "updated_at":      _now(),
         }).execute()
 
         # log the status transition (append-only history), flagging any that

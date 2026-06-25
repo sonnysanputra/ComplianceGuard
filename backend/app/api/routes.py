@@ -44,6 +44,7 @@ from app.services.persistence import (
 )
 from app.services.sar_render import sar_to_sections
 from app.core.case_status import derive_status, ALL_STATUSES, VALID_TRANSITIONS
+from app.core.priority import sla_due_at, sla_label
 
 # agent instances that are safe to re-run standalone (no human interrupt)
 from app.agents.alert_intake import alert_intake
@@ -136,6 +137,10 @@ class CaseSnapshot(BaseModel):
     risk_factors: Optional[list] = None
     key_drivers: Optional[list] = None
     recommendation: Optional[str] = None
+    priority: Optional[str] = None
+    priority_reason: Optional[str] = None
+    sla_due_at: Optional[str] = None
+    sla_label: Optional[str] = None
     risk_explanation: Optional[str] = None
     fp_review: Optional[dict] = None
     sar_package: Optional[dict] = None
@@ -196,6 +201,7 @@ def _snapshot(case_id: str) -> dict:
 
     awaiting = "human_approval" in (state.next or ())
     status = derive_status(v, awaiting)
+    priority = v.get("priority") or (v.get("triage") or {}).get("priority")
 
     return {
         "case_id": case_id, "status": status,
@@ -211,6 +217,8 @@ def _snapshot(case_id: str) -> dict:
         "ai_score": v.get("ai_score"), "risk_level": v.get("risk_level"),
         "risk_factors": v.get("risk_factors"), "key_drivers": v.get("key_drivers"),
         "recommendation": v.get("recommendation"),
+        "priority": priority, "priority_reason": v.get("priority_reason"),
+        "sla_due_at": sla_due_at(priority), "sla_label": sla_label(priority),
         "risk_explanation": v.get("risk_explanation"),
         "sar_package": v.get("sar_package"),
         "sar_draft": v.get("sar_draft"), "review": v.get("review"),

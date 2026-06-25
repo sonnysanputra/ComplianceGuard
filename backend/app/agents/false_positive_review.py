@@ -112,7 +112,7 @@ class FalsePositiveReviewAgent(BaseAgent):
         }
         audit_msg = (f"{self.label}: FP likelihood {likelihood} -> "
                      f"{'human review' if requires_human else 'auto-close'}")
-        return {
+        updates = {
             "fp_review": fp_review,
             "audit_rationales": [self.trace(
                 clearance_reason, confidence,
@@ -120,6 +120,12 @@ class FalsePositiveReviewAgent(BaseAgent):
                 output=fp_review)],
             "audit": stamp(audit_msg),
         }
+        # a cleanly cleared false positive is the lowest priority (batch monitoring)
+        if not requires_human:
+            updates["priority"] = "P4"
+            updates["priority_reason"] = f"Low risk with a strong false-positive " \
+                                         f"explanation: {clearance_reason}"
+        return updates
 
     @staticmethod
     def _heuristic(checks: dict) -> str:

@@ -10,6 +10,7 @@ the judgment, while the rule score keeps it grounded and explainable.
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.core.evidence import EvidenceCollector, index_evidence
+from app.core.priority import assess_priority
 from app.rules.rule_engine import evaluate_aml_rules, get_rules
 from app.tools.db import get_customer, get_transactions
 
@@ -47,6 +48,8 @@ class RiskScoringAgent(BaseAgent):
                 "risk_score": 0, "rule_score": 0, "ai_score": 0,
                 "risk_level": "MANUAL_REVIEW_REQUIRED",
                 "risk_factors": [], "key_drivers": [],
+                "priority": "P2",
+                "priority_reason": "Investigation tool failure - needs prompt manual review.",
                 "recommendation": "Escalate for manual review - one or more "
                                   "investigation tools failed.",
                 "risk_explanation": explanation,
@@ -135,6 +138,10 @@ class RiskScoringAgent(BaseAgent):
         rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= escalate_at
                else "Monitor / close as low risk")
 
+        # risk-aware priority (supersedes the intake agent's provisional priority)
+        priority, priority_reason = assess_priority(
+            {**state, "risk_score": final_score, "risk_factors": factors})
+
         return {
             "risk_score": final_score,
             "rule_score": rule_score,
@@ -144,6 +151,8 @@ class RiskScoringAgent(BaseAgent):
             "evidence": coll.items,         # any evidence the engine had to mint itself
             "key_drivers": key_drivers,
             "recommendation": rec,
+            "priority": priority,
+            "priority_reason": priority_reason,
             "risk_explanation": explanation,
             "audit_rationales": [self.trace(
                 explanation, confidence,
