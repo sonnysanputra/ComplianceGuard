@@ -36,6 +36,7 @@ logger = logging.getLogger("compliguard.api")
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
 from app.rules.rule_engine import get_rules, reload_rules
+from app.rules.country_risk import get_country_risk
 from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
@@ -386,6 +387,12 @@ def policies_reindex():
 def rules():
     """The institution's configurable AML rule set (thresholds + risk points)."""
     return get_rules()
+
+
+@app.get("/country-risk")
+def country_risk():
+    """The country-risk register (level, reason, source, last reviewed)."""
+    return get_country_risk()
 
 
 @app.post("/rules/reload")

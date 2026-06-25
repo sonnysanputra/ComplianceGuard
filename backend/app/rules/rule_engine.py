@@ -21,46 +21,34 @@ from collections import defaultdict
 import yaml
 
 from app.rules.rule_models import TriggeredRule, RuleResult
+# country risk lives in its own structured register module
+from app.rules.country_risk import (
+    get_country_risk, high_risk_countries, risk_level, describe,
+    reload_country_risk,
+)
 
 logger = logging.getLogger(__name__)
 _DIR = Path(__file__).parent
 
 _rules = None
-_countries = None
-
-
-def _load(path: Path, default: dict) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or default
-    except Exception as exc:
-        logger.warning(f"[rules] could not load {path.name} ({exc}); using defaults")
-        return default
 
 
 def get_rules() -> dict:
     global _rules
     if _rules is None:
-        _rules = _load(_DIR / "aml_rules.yaml", {})
+        try:
+            _rules = yaml.safe_load((_DIR / "aml_rules.yaml").read_text(encoding="utf-8")) or {}
+        except Exception as exc:
+            logger.warning(f"[rules] could not load aml_rules.yaml ({exc})")
+            _rules = {}
     return _rules
 
 
-def get_country_risk() -> dict:
-    global _countries
-    if _countries is None:
-        _countries = _load(_DIR / "country_risk.yaml", {"countries": {}}).get("countries", {})
-    return _countries
-
-
-def high_risk_countries() -> set:
-    return set(get_country_risk().keys())
-
-
 def reload_rules() -> dict:
-    """Re-read both YAML files at runtime (after editing thresholds/countries)."""
-    global _rules, _countries
+    """Re-read the rule YAML + the country-risk register at runtime."""
+    global _rules
     _rules = None
-    _countries = None
-    get_country_risk()
+    reload_country_risk()
     return get_rules()
 
 
@@ -113,7 +101,6 @@ def detect_transaction_typology(transactions: list) -> dict:
     """Aggregate transaction facts and apply the SC red-flag typology rules
     (conditions come from typology_rules in aml_rules.yaml)."""
     rules = _typology_rules()
-    crisk = get_country_risk()
 
     outgoing = [t for t in transactions if t.get("direction", "out") == "out"]
     incoming = [t for t in transactions if t.get("direction") == "in"]
@@ -149,7 +136,7 @@ def detect_transaction_typology(transactions: list) -> dict:
                        and window <= mmc["max_forwarding_hours"]),
         "rapid_dispersion": (distinct >= layc["min_distinct_recipients"]
                              and window <= layc["window_hours"]),
-        "new_overseas_recipient": any(crisk.get(c) in allowed_levels for c in countries),
+        "new_overseas_recipient": any(risk_level(c) in allowed_levels for c in countries),
         "volume_spike": total_recent > vsc["baseline_multiplier"] * max(avg_hist, 1),
     }
     return {
@@ -189,7 +176,7 @@ def evaluate_aml_rules(customer: dict, transactions: list,
         "total_recent": _money(tr),
         "distinct": det["distinct_recipients"],
         "avg_historical": _money(det["avg_historical"]),
-        "countries": ", ".join(det["destination_countries"]),
+        "countries": ", ".join(describe(c) for c in det["destination_countries"]),
     }
 
     # --- SC red-flag typology rules (metadata + evidence_template from YAML) ---

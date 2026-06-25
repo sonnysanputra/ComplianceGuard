@@ -1,9 +1,43 @@
-# High-risk jurisdictions and their FATF-style risk level. Edit + POST /rules/reload.
-#   CALL_FOR_ACTION     = FATF "black list" (high-risk, counter-measures)
-#   INCREASED_MONITORING = FATF "grey list" (jurisdictions under increased monitoring)
-#   HIGH                 = internally designated high-risk
+# =====================================================================
+# Country-risk register.
+#
+# These are DEMO values. In production this register would be maintained from
+# FATF public statements, UN Security Council sanctions, regulator guidance, and
+# the institution's own country-risk assessment. FATF updates its high-risk and
+# increased-monitoring lists after its February / June / October plenaries; for
+# high-risk jurisdictions it calls for enhanced due diligence and, in the most
+# serious cases, countermeasures.
+#
+# risk_level:
+#   CALL_FOR_ACTION      = FATF high-risk "black list" (EDD + countermeasures)
+#   INCREASED_MONITORING = FATF "grey list" (under increased monitoring)
+#   HIGH                 = institution's own internal high-risk designation
+#
+# NOTE: Cambodia is configured here as an INTERNAL demo high-risk jurisdiction,
+# NOT an official FATF listing -- it illustrates an institution's own assessment.
+# =====================================================================
+
 countries:
-  North Korea: CALL_FOR_ACTION
-  Iran: CALL_FOR_ACTION
-  Myanmar: CALL_FOR_ACTION
-  Cambodia: INCREASED_MONITORING
+  North Korea:
+    risk_level: CALL_FOR_ACTION
+    reason: FATF high-risk jurisdiction subject to a call for action
+    source: FATF
+    last_reviewed: "2026-06-25"
+
+  Iran:
+    risk_level: CALL_FOR_ACTION
+    reason: FATF high-risk jurisdiction subject to a call for action
+    source: FATF
+    last_reviewed: "2026-06-25"
+
+  Myanmar:
+    risk_level: CALL_FOR_ACTION
+    reason: FATF high-risk jurisdiction subject to a call for action
+    source: FATF
+    last_reviewed: "2026-06-25"
+
+  Cambodia:
+    risk_level: HIGH
+    reason: Internal demo high-risk jurisdiction (not an official FATF listing)
+    source: Internal demo configuration
+    last_reviewed: "2026-06-25"

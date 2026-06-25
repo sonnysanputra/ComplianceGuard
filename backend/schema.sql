@@ -92,3 +92,23 @@ insert into watchlist (entity_name, list_type, risk_level) values
 ('Ahmad Zulkifli',         'PEP',                'High'),
 ('Northern Star Holdings', 'sanctions',          'High'),
 ('Overseas Holdings Inc',  'internal_blacklist', 'Medium');
+
+-- --------------------------------------------------------------------
+-- Country-risk register (production-storage form of country_risk.yaml).
+-- The demo runtime reads the YAML register for portability; in production this
+-- table would be maintained from FATF / UN sanctions / regulator guidance.
+-- --------------------------------------------------------------------
+drop table if exists country_risk;
+create table country_risk (
+    country      text primary key,
+    risk_level   text,            -- CALL_FOR_ACTION | INCREASED_MONITORING | HIGH
+    source       text,
+    reason       text,
+    last_updated timestamptz default now()
+);
+
+insert into country_risk (country, risk_level, source, reason) values
+('North Korea', 'CALL_FOR_ACTION', 'FATF', 'FATF high-risk jurisdiction subject to a call for action'),
+('Iran',        'CALL_FOR_ACTION', 'FATF', 'FATF high-risk jurisdiction subject to a call for action'),
+('Myanmar',     'CALL_FOR_ACTION', 'FATF', 'FATF high-risk jurisdiction subject to a call for action'),
+('Cambodia',    'HIGH', 'Internal demo configuration', 'Internal demo high-risk jurisdiction (not an official FATF listing)');
