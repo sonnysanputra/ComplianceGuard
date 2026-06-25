@@ -10,10 +10,14 @@ kept as a grounding signal + safety fallback if the LLM response can't be parsed
 from datetime import datetime
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
+from app.config.rules import get_rules
 from app.core.state import stamp
 from app.tools.db import get_transactions, HIGH_RISK_COUNTRIES
 
-REPORTING_THRESHOLD = 10_000   # RM -- amounts just under this suggest structuring
+# Demo / internal-review thresholds come from app/config/risk_rules.yaml. In
+# production these must come from the institution's AML rule configuration and
+# must NOT be treated as a legal reporting threshold -- suspicion is assessed on
+# customer knowledge, economic purpose, and risk context, not amount alone.
 
 SYSTEM_PROMPT = """You are a senior AML transaction analyst at a bank, reviewing a \
 flagged customer's activity.
@@ -24,7 +28,7 @@ the facts and computed signals provided. Never invent data. Do not describe a co
 as high-risk unless it appears in the provided high_risk_countries list.
 
 MONEY-LAUNDERING TYPOLOGIES (what each looks like)
-- structuring          : repeated transfers kept just under the reporting threshold
+- structuring          : repeated transfers kept just under the institution's internal review threshold
 - money mule           : large inbound funds rapidly forwarded to several new recipients
 - layering / dispersion: funds split across many newly added recipients in a short window
 - high-risk overseas   : transfers to flagged jurisdictions
@@ -39,6 +43,10 @@ class TransactionAnalysisAgent(BaseAgent):
     label = "Transaction Analysis Agent"
 
     def run(self, state: dict) -> dict:
+        rules = get_rules()
+        s, mm = rules["structuring"], rules["money_mule"]
+        lay, vs = rules["layering_dispersion"], rules["volume_spike"]
+
         cid = state["alert"]["customer_id"]
         txns = get_transactions(cid)                       # tool call, no cost
 
@@ -66,20 +74,25 @@ class TransactionAnalysisAgent(BaseAgent):
             "incoming_total": incoming_total,
             "customer_avg_transaction": round(avg_historical),
             "destination_countries": countries,
-            "reporting_threshold": REPORTING_THRESHOLD,
+            "internal_review_threshold": s["internal_review_threshold"],
             "high_risk_countries": sorted(HIGH_RISK_COUNTRIES),
         }
 
-        # ---- 2. Deterministic flags: grounding signal + safety fallback ----
+        # ---- 2. Deterministic flags (thresholds from app/config/risk_rules.yaml) ----
         rule_flags = {
-            "structuring": sum(
-                1 for a in amounts_recent if 0.9 * REPORTING_THRESHOLD <= a < REPORTING_THRESHOLD
-            ) >= 3,
-            "money_mule": bool(incoming) and len(recent) >= 2
-                          and total_recent >= 0.6 * max(incoming_total, 1),
-            "rapid_dispersion": distinct_recipients >= 5 and window_hours <= 48,
+            "structuring": (
+                sum(1 for a in amounts_recent
+                    if s["lower_bound_ratio"] * s["internal_review_threshold"]
+                    <= a < s["internal_review_threshold"]) >= s["min_transactions"]
+                and window_hours <= s["window_hours"]),
+            "money_mule": (bool(incoming)
+                           and incoming_total >= mm["incoming_min_amount"]
+                           and len(recent) >= mm["min_new_recipients"]
+                           and total_recent >= mm["outgoing_ratio_min"] * max(incoming_total, 1)),
+            "rapid_dispersion": (distinct_recipients >= lay["min_recipients"]
+                                 and window_hours <= lay["window_hours"]),
             "new_overseas_recipient": any(c in HIGH_RISK_COUNTRIES for c in countries),
-            "volume_spike": total_recent > 10 * max(avg_historical, 1),
+            "volume_spike": total_recent > vs["baseline_multiplier"] * max(avg_historical, 1),
         }
 
         # Rules own the typology LABEL (reliable). Qwen owns the REASONING.

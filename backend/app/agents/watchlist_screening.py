@@ -11,11 +11,9 @@ for name screening; an LLM would only add noise here.
 from rapidfuzz import fuzz
 
 from app.agents.base import BaseAgent
+from app.config.rules import get_rules
 from app.core.state import stamp
 from app.tools.db import get_watchlist, get_customer, HIGH_RISK_COUNTRIES
-
-MATCH_THRESHOLD = 80     # >= this is treated as a hit
-REVIEW_THRESHOLD = 70    # >= this is surfaced for manual review
 
 
 class WatchlistScreeningAgent(BaseAgent):
@@ -23,6 +21,10 @@ class WatchlistScreeningAgent(BaseAgent):
     label = "Watchlist Screening Agent"
 
     def run(self, state: dict) -> dict:
+        wl_rules = get_rules()["watchlist"]
+        match_threshold = wl_rules["match_threshold"]
+        review_threshold = wl_rules["review_threshold"]
+
         alert = state["alert"]
         cust = get_customer(alert["customer_id"])
 
@@ -37,7 +39,7 @@ class WatchlistScreeningAgent(BaseAgent):
         for role, name in parties.items():
             for entry in watchlist:
                 score = fuzz.token_sort_ratio(name.lower(), entry["entity_name"].lower())
-                if score >= REVIEW_THRESHOLD:
+                if score >= review_threshold:
                     matches.append({
                         "party": role, "name": name,
                         "matched_entity": entry["entity_name"],
@@ -48,7 +50,7 @@ class WatchlistScreeningAgent(BaseAgent):
         matches.sort(key=lambda m: m["score"], reverse=True)
 
         best = matches[0] if matches else None
-        is_match = any(m["score"] >= MATCH_THRESHOLD for m in matches)
+        is_match = any(m["score"] >= match_threshold for m in matches)
 
         # best score per list type (sanctions / PEP / blacklist)
         per_list = {}
@@ -69,7 +71,7 @@ class WatchlistScreeningAgent(BaseAgent):
             confidence = round(best["score"] / 100.0, 2)
         else:
             reasoning = (f"Screened {len(parties)} parties against {len(watchlist)} entries. "
-                         f"No matches above {REVIEW_THRESHOLD}%. Clear.")
+                         f"No matches above {review_threshold}%. Clear.")
             confidence = 0.9   # confident there is no hit
 
         return {

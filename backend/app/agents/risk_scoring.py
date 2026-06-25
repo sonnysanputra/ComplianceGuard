@@ -8,6 +8,7 @@ the judgment, while the rule score keeps it grounded and explainable.
 """
 
 from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
+from app.config.rules import get_rules
 from app.core.state import stamp
 
 SYSTEM_PROMPT = """You are an AML risk officer making an independent risk assessment \
@@ -75,39 +76,44 @@ class RiskScoringAgent(BaseAgent):
         distinct = tfind.get("distinct_recipients")
         country = alert.get("country")
 
-        add(tf.get("money_mule"), "Money mule pattern", 30,
+        # all risk points come from app/config/risk_rules.yaml (configurable per institution)
+        R = get_rules()
+        threshold = R["structuring"]["internal_review_threshold"]
+
+        add(tf.get("money_mule"), "Money mule pattern", R["money_mule"]["risk_points"],
             f"Inbound funds rapidly forwarded to {distinct} new recipient(s)")
-        add(tf.get("structuring"), "Structuring pattern", 25,
-            f"{alert.get('num_transactions')} transfers below the RM10,000 threshold "
-            f"(RM{total_recent} total)")
-        add(tf.get("rapid_dispersion"), "Layering / dispersion", 25,
+        add(tf.get("structuring"), "Structuring pattern", R["structuring"]["risk_points"],
+            f"{alert.get('num_transactions')} transfers below the RM{threshold:,} "
+            f"internal review threshold (RM{total_recent} total)")
+        add(tf.get("rapid_dispersion"), "Layering / dispersion", R["layering_dispersion"]["risk_points"],
             f"Funds dispersed across {distinct} new recipients within {window}h")
-        add(tf.get("new_overseas_recipient"), "High-risk overseas transfer", 15,
+        add(tf.get("new_overseas_recipient"), "High-risk overseas transfer", R["high_risk_overseas"]["risk_points"],
             f"Transfer to high-risk jurisdiction: {country}")
-        add(tf.get("volume_spike"), "Volume spike", 15,
+        add(tf.get("volume_spike"), "Volume spike", R["volume_spike"]["risk_points"],
             f"Burst of RM{total_recent} far exceeds the customer's baseline")
-        add(kf.get("income_mismatch"), "Income mismatch", 20,
+        add(kf.get("income_mismatch"), "Income mismatch", R["kyc"]["risk_points"],
             f"RM{kf.get('burst_total')} burst vs RM{kf.get('declared_income')} declared "
             f"income ({kf.get('income_ratio')}x)")
-        add(wf.get("is_match"), "Watchlist match", 25,
+        add(wf.get("is_match"), "Watchlist match", R["watchlist"]["match_risk_points"],
             f"Match: {wf.get('best_match')} ({wf.get('match_score')}%, {wf.get('list_type')})")
-        add(wf.get("high_risk_country"), "High-risk country", 10,
+        add(wf.get("high_risk_country"), "High-risk country", R["watchlist"]["high_risk_country_points"],
             f"Recipient country is {country}")
-        add(kf.get("previous_alerts", 0) > 0, "Prior alert history", 10,
+        add(kf.get("previous_alerts", 0) > 0, "Prior alert history", R["history"]["prior_alert_points"],
             f"{kf.get('previous_alerts')} prior alert(s) on the customer's KYC record")
-        add(mem.get("previous_escalations", 0) > 0, "Repeat offender (memory)", 15,
+        add(mem.get("previous_escalations", 0) > 0, "Repeat offender (memory)", R["memory"]["prior_escalation_points"],
             f"{mem.get('previous_escalations')} prior escalation(s) for this customer")
-        add(mem.get("same_recipient_seen_before"), "Repeat recipient (memory)", 10,
+        add(mem.get("same_recipient_seen_before"), "Repeat recipient (memory)", R["memory"]["repeat_recipient_points"],
             "Same recipient seen in a previous investigation")
 
         rule_score = sum(f["points"] for f in factors)
 
         # benign history lowers the score (a negative factor)
         if mem.get("memory_risk_direction") == "reduce":
-            factors.append({"factor": "Benign history (memory)", "points": -10,
+            reduction = R["false_positive"]["risk_reduction_points"]
+            factors.append({"factor": "Benign history (memory)", "points": -reduction,
                             "evidence": f"{mem.get('previous_false_positives')} prior "
                                         f"false positive(s), no escalations"})
-            rule_score -= 10
+            rule_score -= reduction
 
         rule_score = max(0, min(rule_score, 100))
 
@@ -150,7 +156,8 @@ class RiskScoringAgent(BaseAgent):
         key_drivers = assessment.get("key_drivers", [])
         confidence = float(assessment.get("confidence", 85)) / 100.0
 
-        rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= 60
+        escalate_at = R["scoring"]["escalation_threshold"]
+        rec = ("Escalate to Level 2 and prepare SAR draft" if final_score >= escalate_at
                else "Monitor / close as low risk")
 
         return {

@@ -1,0 +1,65 @@
+# =====================================================================
+# CompliGuard AI -- AML rule configuration
+#
+# IMPORTANT: these are DEMO / internal-review values. In production they must
+# come from the institution's own AML rule configuration and risk appetite --
+# they are NOT legal "reporting thresholds". AML suspicion is assessed on
+# knowledge of the customer, the economic purpose, and the risk context, not on
+# transaction amount alone. (cf. SC/BNM AML guidance.)
+#
+# Edit these values, then POST /rules/reload (no restart needed).
+# =====================================================================
+
+currency: MYR
+
+structuring:
+  internal_review_threshold: 10000   # amounts kept just under this are reviewed
+  lower_bound_ratio: 0.90            # "just under" = within 90-100% of the threshold
+  min_transactions: 3
+  window_hours: 24
+  risk_points: 25
+
+money_mule:
+  incoming_min_amount: 20000
+  outgoing_ratio_min: 0.80           # forwards >= 80% of what came in
+  max_forwarding_hours: 24
+  min_new_recipients: 2
+  risk_points: 30
+
+layering_dispersion:
+  min_recipients: 5
+  window_hours: 24
+  risk_points: 30
+
+high_risk_overseas:
+  new_recipient_required: true
+  risk_points: 20
+
+volume_spike:
+  baseline_multiplier: 10            # activity > 10x the customer's own baseline
+  risk_points: 15
+
+kyc:
+  income_mismatch_ratio: 2.0         # burst > 2x declared monthly income
+  risk_points: 20
+
+watchlist:
+  match_threshold: 80                # >= treated as a hit
+  review_threshold: 70               # >= surfaced for manual review
+  match_risk_points: 25
+  high_risk_country_points: 10
+
+history:
+  prior_alert_points: 10
+
+memory:
+  prior_escalation_points: 15
+  repeat_recipient_points: 10
+
+false_positive:
+  known_recipient_required: true
+  supporting_document_required: true
+  risk_reduction_points: 35          # lowers score when history is consistently benign
+
+scoring:
+  escalation_threshold: 60           # final score at/above this escalates to a SAR

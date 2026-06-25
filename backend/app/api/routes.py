@@ -35,6 +35,7 @@ logger = logging.getLogger("compliguard.api")
 
 from app.orchestrator import build_graph
 from app.data.scenarios import SCENARIOS
+from app.config.rules import get_rules, reload_rules
 from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
@@ -378,6 +379,18 @@ def policies_reindex():
     reset_policy_collection()
     docs = load_policies()
     return {"reindexed": len(docs), "policies": [p["id"] for p in docs]}
+
+
+@app.get("/rules")
+def rules():
+    """The institution's configurable AML rule set (thresholds + risk points)."""
+    return get_rules()
+
+
+@app.post("/rules/reload")
+def rules_reload():
+    """Re-read risk_rules.yaml after editing thresholds -- no restart needed."""
+    return reload_rules()
 
 
 @app.post("/investigate", response_model=CaseSnapshot)

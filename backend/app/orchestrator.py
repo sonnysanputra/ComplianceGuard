@@ -24,6 +24,7 @@ INVESTIGATION = ["transaction_analysis", "kyc_profile",
 MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
 
 from app.core.state import CaseState
+from app.config.rules import get_rules
 from app.agents.alert_intake import alert_intake
 from app.agents.data_quality import data_quality
 from app.agents.transaction_analysis import transaction_analysis
@@ -50,7 +51,8 @@ def route_after_data_quality(state: CaseState):
 def route_after_scoring(state: CaseState):
     if state.get("errors"):
         return "human_approval"
-    return "sar_drafting" if state.get("risk_score", 0) >= 60 else END
+    escalate_at = get_rules()["scoring"]["escalation_threshold"]
+    return "sar_drafting" if state.get("risk_score", 0) >= escalate_at else END
 
 
 # After the human acts: 'request_more_info' re-runs the investigation (bounded),
