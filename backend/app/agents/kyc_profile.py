@@ -51,7 +51,7 @@ class KYCProfileAgent(BaseAgent):
                                  "income_mismatch": False, "kyc_status": "Unknown",
                                  "previous_alerts": 0, "checks_failed": [],
                                  "edd_required": False},
-                "cot_traces": [self.trace("Customer record not found.", 0.4)],
+                "audit_rationales": [self.trace("Customer record not found.", 0.4)],
                 "audit": stamp(f"{self.label} could not find customer {cid}"),
             }
 
@@ -117,8 +117,10 @@ class KYCProfileAgent(BaseAgent):
                 "income_mismatch": checks["income_mismatch"],   # kept for risk scoring
                 "edd_required": edd_required,
             },
-            "cot_traces": [self.trace(reasoning, confidence,
-                                      output={"failed": failed, "edd": edd_required})],
+            "audit_rationales": [self.trace(
+                reasoning, confidence,
+                evidence=[f"{c.replace('_', ' ')} failed" for c in failed],
+                output={"failed": failed, "edd": edd_required})],
             "audit": stamp(f"{self.label} ran {len(checks)} checks, {len(failed)} failed"
                            f"{' -> EDD' if edd_required else ''}"),
         }

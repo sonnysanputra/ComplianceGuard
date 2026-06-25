@@ -92,7 +92,11 @@ class TransactionAnalysisAgent(BaseAgent):
                 "window_hours": det["window_hours"],
                 "summary": reasoning,
             },
-            "cot_traces": [self.trace(reasoning, confidence, output={"typology": typology})],
+            "audit_rationales": [self.trace(
+                reasoning, confidence,
+                evidence=[f.get("flag") for f in llm_flags
+                          if isinstance(f, dict) and f.get("flag")],
+                output={"typology": typology})],
             "audit": stamp(f"{self.label} detected typology: {typology}"),
         }
 

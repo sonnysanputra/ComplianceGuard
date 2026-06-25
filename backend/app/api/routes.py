@@ -140,7 +140,7 @@ class CaseSnapshot(BaseModel):
     human_review: Optional[dict] = None
     errors: Optional[list] = None
     audit: Optional[list] = None
-    cot_traces: Optional[list] = None
+    audit_rationales: Optional[list] = None
     a2a_messages: Optional[list] = None
 
 
@@ -222,7 +222,7 @@ def _snapshot(case_id: str) -> dict:
         "human_decision": v.get("human_decision"),
         "human_review": v.get("human_review"), "errors": v.get("errors"),
         "audit": sorted(v.get("audit", [])),
-        "cot_traces": v.get("cot_traces"), "a2a_messages": v.get("a2a_messages"),
+        "audit_rationales": v.get("audit_rationales"), "a2a_messages": v.get("a2a_messages"),
     }
 
 
@@ -449,8 +449,8 @@ def investigate_stream(alert: Alert):
                     if node == "__interrupt__" or not isinstance(updates, dict):
                         continue
                     conf = None
-                    if updates.get("cot_traces"):
-                        conf = updates["cot_traces"][-1].get("confidence")
+                    if updates.get("audit_rationales"):
+                        conf = updates["audit_rationales"][-1].get("confidence")
                     msg = updates["audit"][-1] if updates.get("audit") else ""
                     ev = {"agent": node, "label": LABELS.get(node, node),
                           "status": "completed", "confidence": conf, "message": msg}

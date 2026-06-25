@@ -27,7 +27,7 @@ class PolicyRAGAgent(BaseAgent):
 
         return {
             "retrieved_policies": policies,
-            "cot_traces": [self.trace(reasoning, confidence,
+            "audit_rationales": [self.trace(reasoning, confidence,
                                       output={"citations": [p["policy_id"] for p in policies]})],
             "audit": stamp(f"{self.label} retrieved {len(policies)} citations: {cites or 'none'}"),
         }

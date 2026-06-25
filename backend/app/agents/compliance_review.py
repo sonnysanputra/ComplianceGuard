@@ -89,7 +89,7 @@ class ComplianceReviewAgent(BaseAgent):
                 "unsupported_claims": unsupported,
                 "status": status,
             },
-            "cot_traces": [self.trace(reasoning, confidence,
+            "audit_rationales": [self.trace(reasoning, confidence,
                                       output={"quality": quality, "supported": supported})],
             "audit": stamp(f"{self.label} quality {quality}/100, "
                            f"{'claims supported' if supported else f'{len(unsupported)} unsupported claim(s)'}"),

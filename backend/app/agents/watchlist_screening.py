@@ -101,8 +101,11 @@ class WatchlistScreeningAgent(BaseAgent):
                 "all_matches": all_matches,
                 "screened_parties": list(parties.keys()),
             },
-            "cot_traces": [self.trace(reasoning, confidence,
-                                      output={"is_match": is_match, "matches": len(all_matches)})],
+            "audit_rationales": [self.trace(
+                reasoning, confidence,
+                evidence=[f"{m['party']} '{m['searched_name']}' ~ '{m['matched_entity']}' "
+                          f"({m['score']:.0f}%, {m['list_type']})" for m in all_matches],
+                output={"is_match": is_match, "matches": len(all_matches)})],
             "audit": stamp(f"{self.label} screened {len(parties)} parties -> {verdict}"),
         }
 

@@ -64,10 +64,11 @@ def human_approval(state: dict) -> dict:
     if note:
         audit_msg += f" — {note}"
     updates["audit"] = stamp(audit_msg)
-    updates["cot_traces"] = [{
+    updates["audit_rationales"] = [{
         "agent": "human_approval",
-        "reasoning": audit_msg,
+        "rationale": audit_msg,
         "confidence": 1.0,
+        "evidence": [note] if note else [],
         "output": {"decision": decision, "override": payload.get("final_risk_level")},
         "duration_ms": 0,
     }]

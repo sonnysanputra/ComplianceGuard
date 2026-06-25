@@ -66,7 +66,7 @@ class DataQualityAgent(BaseAgent):
                 "missing_fields": missing,
                 "recommended_action": recommended,
             },
-            "cot_traces": [self.trace(reasoning, 0.95,
+            "audit_rationales": [self.trace(reasoning, 0.95,
                                       output={"complete": complete, "missing": missing})],
             "audit": stamp(f"{self.label}: {status}"
                            + (f" (missing: {', '.join(missing)})" if missing else "")),

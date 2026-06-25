@@ -63,7 +63,7 @@ class SARDraftingAgent(BaseAgent):
 
         return {
             "sar_draft": draft,
-            "cot_traces": [self.trace(reasoning, confidence)],
+            "audit_rationales": [self.trace(reasoning, confidence)],
             "audit": stamp(f"{self.label} generated report"),
         }
 

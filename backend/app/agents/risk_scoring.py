@@ -49,7 +49,7 @@ class RiskScoringAgent(BaseAgent):
                 "recommendation": "Escalate for manual review - one or more "
                                   "investigation tools failed.",
                 "risk_explanation": explanation,
-                "cot_traces": [self.trace(explanation, 0.0, output={"failed": failed})],
+                "audit_rationales": [self.trace(explanation, 0.0, output={"failed": failed})],
                 "audit": stamp(f"{self.label} -> MANUAL_REVIEW_REQUIRED "
                                f"({', '.join(failed)} failed)"),
             }
@@ -125,10 +125,11 @@ class RiskScoringAgent(BaseAgent):
             "key_drivers": key_drivers,
             "recommendation": rec,
             "risk_explanation": explanation,
-            "cot_traces": [self.trace(explanation, confidence,
-                                      output={"final": final_score, "rule": rule_score,
-                                              "ai": ai_score, "level": risk_level,
-                                              "factors": factors})],
+            "audit_rationales": [self.trace(
+                explanation, confidence,
+                evidence=[f"{f.get('name')}: {f.get('evidence')}" for f in factors],
+                output={"final": final_score, "rule": rule_score,
+                        "ai": ai_score, "level": risk_level, "factors": factors})],
             "audit": stamp(f"{self.label} scored {final_score}/100 "
                            f"(rule {rule_score}, AI {ai_score}) -> {risk_level}"),
         }

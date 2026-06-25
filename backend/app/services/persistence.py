@@ -68,14 +68,14 @@ def persist_case(state: dict, status: str) -> bool:
                 "match_type": m.get("match_type"),
             } for m in wl_matches]).execute()
 
-        # 2) events + 3) structured outputs, both from the CoT traces
+        # 2) events + 3) structured outputs, both from the audit rationales
         events, outputs = [], []
-        for t in state.get("cot_traces", []):
+        for t in state.get("audit_rationales", []):
             events.append({
                 "case_id":    case_id,
                 "agent_name": t.get("agent"),
-                "event_type": "reasoning",
-                "message":    (t.get("reasoning") or "")[:1000],
+                "event_type": "rationale",
+                "message":    (t.get("rationale") or "")[:1000],
                 "confidence": t.get("confidence"),
             })
             outputs.append({

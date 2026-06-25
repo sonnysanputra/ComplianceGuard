@@ -20,12 +20,15 @@ CONFIDENCE_RUBRIC = (
 
 
 # Injected before an agent's own system prompt when it uses self.reason().
-_COT_PREFIX = """Reason step by step, then give a confidence score.
+# A compliance product exposes a concise, evidence-backed rationale -- NOT raw
+# "chain-of-thought" or hidden reasoning.
+_RATIONALE_PREFIX = """Provide a concise audit rationale based only on the evidence.
+Then give a confidence score. Do not include hidden reasoning or unsupported assumptions.
 
 Format your answer exactly like this:
-<reasoning>
-[your step-by-step reasoning]
-</reasoning>
+<rationale>
+[your concise, evidence-based rationale]
+</rationale>
 Confidence: [0-100]
 
 """
@@ -39,7 +42,7 @@ class BaseAgent(ABC):
     @abstractmethod
     def run(self, state: dict) -> dict:
         """Do the work. Return ONLY the state keys this agent writes.
-        Should include a 'cot_traces' entry built with self.trace(...)."""
+        Should include a 'audit_rationales' entry built with self.trace(...)."""
 
     # ── LangGraph node entry point (wraps run with timing + a2a + retry) ──
     def __call__(self, state: dict) -> dict:
@@ -49,7 +52,7 @@ class BaseAgent(ABC):
         except Exception as exc:
             duration = int((time.time() - start) * 1000)
             return {
-                "cot_traces": [self.trace(f"Agent failed: {exc}", 0.0)],
+                "audit_rationales": [self.trace(f"Agent failed: {exc}", 0.0)],
                 "a2a_messages": [{"from": self.name, "status": "error",
                                   "error": str(exc), "duration_ms": duration}],
                 "errors": [{"agent": self.name, "error": str(exc)}],   # forces manual review
@@ -60,9 +63,9 @@ class BaseAgent(ABC):
 
         # stamp duration onto this agent's trace, and emit an A2A message
         confidence = None
-        if updates.get("cot_traces"):
-            updates["cot_traces"][-1]["duration_ms"] = duration
-            confidence = updates["cot_traces"][-1].get("confidence")
+        if updates.get("audit_rationales"):
+            updates["audit_rationales"][-1]["duration_ms"] = duration
+            confidence = updates["audit_rationales"][-1].get("confidence")
 
         updates.setdefault("a2a_messages", [])
         updates["a2a_messages"].append({
@@ -83,9 +86,9 @@ class BaseAgent(ABC):
         return chat(prompt, system=system)
 
     def reason(self, system: str, prompt: str) -> tuple[str, float]:
-        """Single chain-of-thought call. Returns (reasoning_text, confidence 0..1)."""
-        raw = chat(prompt, system=_COT_PREFIX + (system or ""))
-        return self._parse_cot(raw)
+        """Single rationale call. Returns (rationale_text, confidence 0..1)."""
+        raw = chat(prompt, system=_RATIONALE_PREFIX + (system or ""))
+        return self._parse_rationale(raw)
 
     def think(self, system: str, prompt: str) -> dict:
         """LLM call that returns a parsed JSON object (the model's reasoning +
@@ -108,26 +111,29 @@ class BaseAgent(ABC):
         except (json.JSONDecodeError, ValueError):
             return {}
 
-    def trace(self, reasoning: str, confidence: float, output: dict | None = None) -> dict:
-        """Build a CoT trace entry for the cot_traces accumulator."""
+    def trace(self, rationale: str, confidence: float,
+              evidence: list | None = None, output: dict | None = None) -> dict:
+        """Build an audit-rationale entry: a concise, evidence-backed rationale and
+        a confidence score (no raw chain-of-thought)."""
         return {
             "agent": self.name,
-            "reasoning": reasoning,
+            "rationale": rationale,
             "confidence": round(float(confidence), 2),
+            "evidence": evidence or [],
             "output": output or {},
             "duration_ms": 0,   # filled in by __call__
         }
 
     @staticmethod
-    def _parse_cot(raw: str) -> tuple[str, float]:
-        """Pull the <reasoning> block and a 'Confidence: NN' score from a response."""
-        reasoning = raw.strip()
-        m = re.search(r"<reasoning>(.*?)</reasoning>", raw, re.DOTALL | re.IGNORECASE)
+    def _parse_rationale(raw: str) -> tuple[str, float]:
+        """Pull the <rationale> block and a 'Confidence: NN' score from a response."""
+        rationale = raw.strip()
+        m = re.search(r"<rationale>(.*?)</rationale>", raw, re.DOTALL | re.IGNORECASE)
         if m:
-            reasoning = m.group(1).strip()
+            rationale = m.group(1).strip()
 
         confidence = 0.8  # sensible default if the model omits it
         cm = re.search(r"confidence:\s*(\d+)", raw, re.IGNORECASE)
         if cm:
             confidence = min(int(cm.group(1)) / 100.0, 1.0)
-        return reasoning, confidence
+        return rationale, confidence

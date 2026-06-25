@@ -99,7 +99,7 @@ class AlertIntakeAgent(BaseAgent):
                 "triggered_investigations": investigations,
                 "field_completeness": round(completeness, 2),
             },
-            "cot_traces": [self.trace(reasoning, confidence,
+            "audit_rationales": [self.trace(reasoning, confidence,
                                       output={"type": alert_type, "priority": priority})],
             "audit": stamp(f"{self.label} triaged {alert['id']} -> {alert_type} ({priority})"),
         }

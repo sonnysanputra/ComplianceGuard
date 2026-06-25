@@ -114,7 +114,10 @@ class FalsePositiveReviewAgent(BaseAgent):
                      f"{'human review' if requires_human else 'auto-close'}")
         return {
             "fp_review": fp_review,
-            "cot_traces": [self.trace(clearance_reason, confidence, output=fp_review)],
+            "audit_rationales": [self.trace(
+                clearance_reason, confidence,
+                evidence=[k.replace("_", " ") for k, v in checks.items() if v],
+                output=fp_review)],
             "audit": stamp(audit_msg),
         }
 

@@ -70,7 +70,7 @@ class CaseMemoryAgent(BaseAgent):
                 "memory_risk_direction": direction,
                 "memory_risk_signal": signal,
             },
-            "cot_traces": [self.trace(signal, confidence,
+            "audit_rationales": [self.trace(signal, confidence,
                                       output={"direction": direction,
                                               "prior_cases": previous_cases_found})],
             "audit": stamp(f"{self.label} found {previous_cases_found} prior case(s), "
