@@ -18,54 +18,83 @@ Bank compliance teams receive hundreds of suspicious-activity alerts daily. Each
 
 ## Architecture
 
-A LangGraph pipeline. A **graded data-quality gate** halts un-investigable cases up front; **eight investigation agents run in parallel**, fan into risk scoring, and the case is then disposed by a **fail-safe router** — auto-close with a clearance note (low risk), false-positive review (sub-threshold but flagged), manual review (tool failure / watchlist match / degraded data), or a SAR for human approval (high risk).
+A LangGraph pipeline runs a case through **6 stages**. Stage 2 runs **8 agents in parallel**; a **fail-safe router** in Stage 4 decides what happens next.
+
+### The 6 stages at a glance
+
+| Stage | What happens | Agents | Output |
+|-------|--------------|--------|--------|
+| **1 · Intake & Triage** | Classify the alert, assign priority, **grade data quality** | Alert Intake, Data Quality Gate | typed + prioritized alert — or **halt** if data is missing |
+| **2 · Parallel Investigation** | 8 agents gather signals **simultaneously** | Transaction Analysis, Timeline, Relationship Graph, KYC, Watchlist, Adverse Media, Policy RAG, Memory | findings + structured **evidence** |
+| **3 · Risk Scoring** | Deterministic rules **⊕** Qwen judgment | Risk Scoring | score, **factor breakdown**, calibrated confidence, **priority + SLA** |
+| **4 · Disposition** | A **fail-safe router** picks the path | False-Positive Review, Auto-Clearance | auto-close · FP review · manual review · SAR |
+| **5 · Reporting** | Draft + validate the report | SAR Drafting, Compliance Review | 12-section **SAR package** |
+| **6 · Human Approval** | An analyst makes the final call | Human Approval | **approved SAR + full audit trail** |
+
+### Flow
 
 ```mermaid
 flowchart TD
-    A([Suspicious Activity Alert]) --> B
-    subgraph S1["Stage 1 · Intake & Triage"]
-        B["Alert Intake<br/><i>type · severity · P1–P4</i>"] --> DQ{"Data Quality Gate<br/><i>GOOD · PARTIAL · POOR · CRITICAL</i>"}
+    A([Suspicious Activity Alert]) --> AI
+
+    subgraph S1["STAGE 1 · Intake and Triage"]
+        AI["Alert Intake<br/><i>type · severity · P1–P4</i>"] --> DQ{"Data Quality Gate<br/><i>GOOD · PARTIAL · POOR · CRITICAL</i>"}
     end
-    DQ -- POOR / CRITICAL --> NMI([Needs More Information])
-    DQ -- GOOD / PARTIAL --> INV
-    subgraph S2["Stage 2 · Parallel Investigation (×8)"]
-        INV["Transaction Analysis · Timeline · Relationship Graph<br/>KYC Profile · Watchlist · Adverse Media · Policy RAG · Memory"]
+    DQ -->|POOR / CRITICAL| NMI([Needs More Information])
+
+    subgraph S2["STAGE 2 · Parallel Investigation — 8 agents at once"]
+        INV["Transaction Analysis · Timeline · Relationship Graph · KYC Profile<br/>Watchlist · Adverse Media · Policy RAG · Memory"]
     end
-    INV --> D
-    subgraph S3["Stage 3 · Scoring & Disposition"]
-        D["Risk Scoring<br/><i>rules ⊕ Qwen · factor breakdown · calibrated confidence · priority+SLA</i>"] --> E{fail-safe route}
-        E -- clean low risk --> AC([Auto-close + clearance note])
-        E -- sub-threshold flagged --> FP["False-Positive Review"]
-        FP -- cleared --> AC
-        FP -- needs human --> I
-        E -- tool failure / watchlist match / degraded --> I
-        E -- high risk --> G["SAR Drafting"] --> H["Compliance Review"]
+    DQ -->|GOOD / PARTIAL| INV
+
+    subgraph S3["STAGE 3 · Risk Scoring"]
+        RS["rules ⊕ Qwen<br/><i>factors+evidence · confidence · priority+SLA</i>"]
     end
-    H --> I([⏸ Human Approval<br/>approve · reject · edit · request more info])
-    I -- request more info --> INV
-    I -- decided --> J([Approved SAR + full audit trail])
+    INV --> RS
+
+    subgraph S4["STAGE 4 · Disposition (fail-safe router)"]
+        R{route}
+    end
+    RS --> R
+    R -->|clean low risk| AC([Auto-close + clearance note])
+    R -->|sub-threshold flagged| FP["False-Positive Review"]
+    FP -->|cleared| AC
+
+    subgraph S5["STAGE 5 · Reporting"]
+        SAR["SAR Drafting"] --> CR["Compliance Review"]
+    end
+    R -->|high risk| SAR
+
+    subgraph S6["STAGE 6 · Human Approval"]
+        H(["⏸ approve · reject · edit · request more info"])
+    end
+    CR --> H
+    FP -->|needs human| H
+    R -->|tool failure · watchlist match · degraded data| H
+    H -->|request more info| INV
+    H -->|decided| DONE([Approved SAR + audit trail])
 ```
 
-## Agent pipeline — 16 agents, 6 stages
+## Agent pipeline — 16 agents across the 6 stages
 
 | # | Agent | Stage | Responsibility |
 |---|-------|-------|----------------|
-| 1 | **Alert Intake** | Intake & Triage | Classifies alert type/severity, assigns a provisional **P1–P4** priority, extracts entities, routes |
-| 2 | **Data Quality Gate** | Intake & Triage | Grades data **GOOD / PARTIAL / POOR / CRITICAL_MISSING** with a score; halts un-investigable cases, forces manual review on degraded data |
-| 3 | **Transaction Analysis** | Investigation | Detects the ML **typology** (structuring, mule, layering, overseas, volume spike) + computes the **account behaviour baseline** |
-| 4 | **Transaction Timeline** | Investigation | Reconstructs a **chronological, annotated** event timeline with per-event risk notes |
-| 5 | **Relationship Graph** | Investigation | Builds the **money-flow graph** — fan-out, rapid forwarding, common collector, circular flow (layering / mule network signatures) |
-| 6 | **KYC Profile** | Investigation | **5 consistency checks** (income, occupation, account age, risk, history) + triggers **EDD** |
-| 7 | **Watchlist Screening** | Investigation | Fuzzy-screens **both customer and recipient** against sanctions / PEP / blacklist / scam lists |
-| 8 | **Adverse Media** | Investigation | Negative-news screening (fraud, investigations, enforcement) — catches entities before they're formally listed |
-| 9 | **Policy RAG** | Investigation | Retrieves policies via **vector recall + cross-encoder rerank** over **heading-chunked** docs; returns scored, section-level **citations** |
-| 10 | **Memory Agent** | Investigation | **Long-term memory** — prior cases/escalations, repeat recipients, and **learns from analyst false-positive feedback** |
-| 11 | **Risk Scoring** | Scoring | Blends a **rule baseline** with an independent **Qwen assessment**; emits a **factor breakdown referencing evidence by ID**, a **calibrated confidence**, and a risk-aware **priority + SLA** |
-| 12 | **False-Positive Review** | Disposition | Structured FP workflow — clears benign cases (known recipient, invoice, clear purpose) or refers sanctions name-matches to a human |
-| 13 | **Auto-Clearance** | Disposition | Emits a professional **clearance note** (reason + evidence + recommended action) instead of silently ending |
-| 14 | **SAR Drafting** | Reporting | Generates a structured **12-section regulator-style SAR package** (JSON → Markdown / PDF / DOCX) |
-| 15 | **Compliance Review** | Reporting | Validates **every claim is evidence-backed**; scores completeness + quality |
-| 16 | **Human Approval** | HITL | Structured decision: **approve / reject / edit / request_more_info**, SAR edits, risk overrides, and **feedback tags** for learning |
+| 1 | **Alert Intake** | 1 · Intake & Triage | Classifies alert type/severity, assigns a provisional **P1–P4** priority, extracts entities, routes |
+| 2 | **Data Quality Gate** | 1 · Intake & Triage | Grades data **GOOD / PARTIAL / POOR / CRITICAL_MISSING** with a score; halts un-investigable cases, forces manual review on degraded data |
+| 3 | **Transaction Analysis** | 2 · Investigation | Detects the ML **typology** (structuring, mule, layering, overseas, volume spike) + computes the **account behaviour baseline** |
+| 4 | **Transaction Timeline** | 2 · Investigation | Reconstructs a **chronological, annotated** event timeline with per-event risk notes |
+| 5 | **Relationship Graph** | 2 · Investigation | Builds the **money-flow graph** — fan-out, rapid forwarding, common collector, circular flow (layering / mule network signatures) |
+| 6 | **KYC Profile** | 2 · Investigation | **5 consistency checks** (income, occupation, account age, risk, history) + triggers **EDD** |
+| 7 | **Watchlist Screening** | 2 · Investigation | Fuzzy-screens **both customer and recipient** against sanctions / PEP / blacklist / scam lists |
+| 8 | **Adverse Media** | 2 · Investigation | Negative-news screening (fraud, investigations, enforcement) — catches entities before they're formally listed |
+| 9 | **Policy RAG** | 2 · Investigation | Retrieves policies via **vector recall + cross-encoder rerank** over **heading-chunked** docs; returns scored, section-level **citations** |
+| 10 | **Memory Agent** | 2 · Investigation | **Long-term memory** — prior cases/escalations, repeat recipients, and **learns from analyst false-positive feedback** |
+| 11 | **Risk Scoring** | 3 · Scoring | Blends a **rule baseline** with an independent **Qwen assessment**; emits a **factor breakdown referencing evidence by ID**, a **calibrated confidence**, and a risk-aware **priority + SLA** |
+| 12 | **False-Positive Review** | 4 · Disposition | Structured FP workflow — clears benign cases (known recipient, invoice, clear purpose) or refers sanctions name-matches to a human |
+| 13 | **Auto-Clearance** | 4 · Disposition | Emits a professional **clearance note** (reason + evidence + recommended action) instead of silently ending |
+| 14 | **SAR Drafting** | 5 · Reporting | Generates a structured **12-section regulator-style SAR package** (JSON → Markdown / PDF / DOCX) |
+| 15 | **Compliance Review** | 5 · Reporting | Validates **every claim is evidence-backed**; scores completeness + quality |
+| 16 | **Human Approval** | 6 · Approval | Structured decision: **approve / reject / edit / request_more_info**, SAR edits, risk overrides, and **feedback tags** for learning |
 
 > Every agent extends `BaseAgent` and emits an **evidence-backed audit rationale** (not raw chain-of-thought), a **confidence score**, **model-governance metadata** (model, prompt, ruleset, policy version), and an agent-to-agent (A2A) status message.
 
