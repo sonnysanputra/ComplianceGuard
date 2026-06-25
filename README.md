@@ -1,14 +1,16 @@
 # CompliGuard AI
 
-**A multi-agent AML compliance investigation system.** It turns a raw suspicious-activity alert into a fully investigated, explainable case — with a drafted Suspicious Activity Report (SAR) — in about a minute, while keeping a human analyst in control of the final decision.
+**A multi-agent AML compliance investigation system.** It turns a raw suspicious-activity alert into a fully investigated, explainable, **traceable** case — with a drafted Suspicious Activity Report (SAR) — in about a minute, while keeping a human analyst in control of the final decision.
 
-Built with **LangGraph** orchestration, a **local Qwen** LLM (via Ollama), **RAG with cross-encoder reranking** (ChromaDB), tool-calling into **Supabase**, long- and short-term **memory**, and a **FastAPI** backend with live streaming. Runs entirely on a local model — no per-token API bills, and customer data never leaves the environment.
+Built with **LangGraph** orchestration, a **local Qwen** LLM (via Ollama), **RAG with cross-encoder reranking** (ChromaDB), tool-calling into **Supabase**, relationship-graph network analysis, long- and short-term **memory**, and a **FastAPI** backend with live streaming. Runs entirely on a local model — no per-token API bills, and customer data never leaves the environment.
+
+> **16 specialized agents across 6 stages (8 running in parallel)** on a hybrid *deterministic-rules + local-LLM* architecture. Every decision is traceable to its evidence, the rules that fired, the policies cited, and the human who approved it.
 
 ---
 
 ## The problem
 
-Bank compliance teams receive hundreds of suspicious-activity alerts daily. Each one requires an analyst to manually pull transaction history, cross-reference the customer's KYC profile, screen watchlists, look up internal policy, judge the risk, and write a SAR. It's slow, repetitive, and inconsistent between analysts.
+Bank compliance teams receive hundreds of suspicious-activity alerts daily. Each one requires an analyst to manually pull transaction history, cross-reference the customer's KYC profile, screen watchlists and adverse media, look up internal policy, judge the risk, and write a SAR. It's slow, repetitive, and inconsistent between analysts — and most alerts turn out to be false positives.
 
 **CompliGuard AI automates the investigation** and hands the analyst a finished, evidence-backed draft to approve — it never files anything automatically.
 
@@ -16,79 +18,86 @@ Bank compliance teams receive hundreds of suspicious-activity alerts daily. Each
 
 ## Architecture
 
-A LangGraph pipeline. A data-quality gate halts incomplete cases up front; five
-investigation agents then run **in parallel**, fan into risk scoring, and the case
-either auto-closes (low risk), escalates to manual review (a tool failed), or
-drafts a SAR for human approval.
+A LangGraph pipeline. A **graded data-quality gate** halts un-investigable cases up front; **eight investigation agents run in parallel**, fan into risk scoring, and the case is then disposed by a **fail-safe router** — auto-close with a clearance note (low risk), false-positive review (sub-threshold but flagged), manual review (tool failure / watchlist match / degraded data), or a SAR for human approval (high risk).
 
 ```mermaid
 flowchart TD
     A([Suspicious Activity Alert]) --> B
     subgraph S1["Stage 1 · Intake & Triage"]
-        B["Alert Intake<br/><i>type · severity · P1–P4</i>"] --> DQ{"Data Quality Gate"}
+        B["Alert Intake<br/><i>type · severity · P1–P4</i>"] --> DQ{"Data Quality Gate<br/><i>GOOD · PARTIAL · POOR · CRITICAL</i>"}
     end
-    DQ -- incomplete --> NMI([Needs More Information])
-    DQ -- complete --> C1 & C2 & C3 & C4 & C5
-    subgraph S2["Stage 2 · Parallel Investigation"]
-        C1["Transaction Analysis<br/><i>detect ML typology</i>"]
-        C2["KYC Profile<br/><i>5 checks + EDD</i>"]
-        C3["Watchlist Screening<br/><i>dual-party</i>"]
-        C4["Policy RAG<br/><i>recall + rerank + cite</i>"]
-        C5["Memory Agent<br/><i>customer history</i>"]
+    DQ -- POOR / CRITICAL --> NMI([Needs More Information])
+    DQ -- GOOD / PARTIAL --> INV
+    subgraph S2["Stage 2 · Parallel Investigation (×8)"]
+        INV["Transaction Analysis · Timeline · Relationship Graph<br/>KYC Profile · Watchlist · Adverse Media · Policy RAG · Memory"]
     end
-    C1 & C2 & C3 & C4 & C5 --> D
-    subgraph S3["Stage 3 · Risk & Reporting"]
-        D["Risk Scoring<br/><i>rules ⊕ Qwen · factor breakdown</i>"] --> E{route}
-        E -- low risk --> F([Auto-close · no SAR])
-        E -- tool failure --> MR([Manual Review])
+    INV --> D
+    subgraph S3["Stage 3 · Scoring & Disposition"]
+        D["Risk Scoring<br/><i>rules ⊕ Qwen · factor breakdown · calibrated confidence · priority+SLA</i>"] --> E{fail-safe route}
+        E -- clean low risk --> AC([Auto-close + clearance note])
+        E -- sub-threshold flagged --> FP["False-Positive Review"]
+        FP -- cleared --> AC
+        FP -- needs human --> I
+        E -- tool failure / watchlist match / degraded --> I
         E -- high risk --> G["SAR Drafting"] --> H["Compliance Review"]
     end
     H --> I([⏸ Human Approval<br/>approve · reject · edit · request more info])
-    MR --> I
-    I -- request more info --> C1
-    I -- decided --> J([Approved SAR + Audit Trail])
+    I -- request more info --> INV
+    I -- decided --> J([Approved SAR + full audit trail])
 ```
 
-## Agent pipeline
+## Agent pipeline — 16 agents, 6 stages
 
 | # | Agent | Stage | Responsibility |
 |---|-------|-------|----------------|
-| 1 | **Alert Intake** | Intake & Triage | Classifies alert type/severity, assigns a **P1–P4** priority, extracts entities, routes |
-| 2 | **Data Quality Gate** | Intake & Triage | Checks essential data is present; halts incomplete cases with **NEEDS_MORE_INFORMATION** instead of investigating blind |
-| 3 | **Transaction Analysis** | Investigation | Detects the ML **typology** — structuring, money mule, layering/dispersion, high-risk overseas, volume spike |
-| 4 | **KYC Profile** | Investigation | **5 consistency checks** (income, occupation, account age, risk, history) + triggers **EDD** |
-| 5 | **Watchlist Screening** | Investigation | Fuzzy-screens **both customer and recipient** against sanctions / PEP / blacklist |
-| 6 | **Policy RAG** | Investigation | Retrieves relevant policies via **vector recall + cross-encoder rerank**, returns scored **citations** |
-| 7 | **Memory Agent** | Investigation | **Long-term memory** — prior cases, prior escalations, repeat recipients, analyst overrides |
-| 8 | **Risk Scoring** | Risk & Reporting | Blends a **rule baseline** with an independent **Qwen assessment**; emits a **factor breakdown** with evidence; forces manual review on tool failure |
-| 9 | **SAR Drafting** | Risk & Reporting | Generates a structured **SAR** with policy references |
-| 10 | **Compliance Review** | Risk & Reporting | Validates **every claim is evidence-backed**; scores completeness + quality |
-| 11 | **Human Approval** | HITL | Structured decision: **approve / reject / edit / request_more_info**, with SAR edits and risk-level overrides |
+| 1 | **Alert Intake** | Intake & Triage | Classifies alert type/severity, assigns a provisional **P1–P4** priority, extracts entities, routes |
+| 2 | **Data Quality Gate** | Intake & Triage | Grades data **GOOD / PARTIAL / POOR / CRITICAL_MISSING** with a score; halts un-investigable cases, forces manual review on degraded data |
+| 3 | **Transaction Analysis** | Investigation | Detects the ML **typology** (structuring, mule, layering, overseas, volume spike) + computes the **account behaviour baseline** |
+| 4 | **Transaction Timeline** | Investigation | Reconstructs a **chronological, annotated** event timeline with per-event risk notes |
+| 5 | **Relationship Graph** | Investigation | Builds the **money-flow graph** — fan-out, rapid forwarding, common collector, circular flow (layering / mule network signatures) |
+| 6 | **KYC Profile** | Investigation | **5 consistency checks** (income, occupation, account age, risk, history) + triggers **EDD** |
+| 7 | **Watchlist Screening** | Investigation | Fuzzy-screens **both customer and recipient** against sanctions / PEP / blacklist / scam lists |
+| 8 | **Adverse Media** | Investigation | Negative-news screening (fraud, investigations, enforcement) — catches entities before they're formally listed |
+| 9 | **Policy RAG** | Investigation | Retrieves policies via **vector recall + cross-encoder rerank** over **heading-chunked** docs; returns scored, section-level **citations** |
+| 10 | **Memory Agent** | Investigation | **Long-term memory** — prior cases/escalations, repeat recipients, and **learns from analyst false-positive feedback** |
+| 11 | **Risk Scoring** | Scoring | Blends a **rule baseline** with an independent **Qwen assessment**; emits a **factor breakdown referencing evidence by ID**, a **calibrated confidence**, and a risk-aware **priority + SLA** |
+| 12 | **False-Positive Review** | Disposition | Structured FP workflow — clears benign cases (known recipient, invoice, clear purpose) or refers sanctions name-matches to a human |
+| 13 | **Auto-Clearance** | Disposition | Emits a professional **clearance note** (reason + evidence + recommended action) instead of silently ending |
+| 14 | **SAR Drafting** | Reporting | Generates a structured **12-section regulator-style SAR package** (JSON → Markdown / PDF / DOCX) |
+| 15 | **Compliance Review** | Reporting | Validates **every claim is evidence-backed**; scores completeness + quality |
+| 16 | **Human Approval** | HITL | Structured decision: **approve / reject / edit / request_more_info**, SAR edits, risk overrides, and **feedback tags** for learning |
 
-> Every agent extends `BaseAgent` and emits a chain-of-thought reasoning trace, a **confidence score**, and an agent-to-agent (A2A) status message — producing a full **audit timeline** and per-agent confidence for every case.
+> Every agent extends `BaseAgent` and emits an **evidence-backed audit rationale** (not raw chain-of-thought), a **confidence score**, **model-governance metadata** (model, prompt, ruleset, policy version), and an agent-to-agent (A2A) status message.
 
 ### Design principles
 
-- **Hybrid, not pure-LLM** — deterministic rules compute facts and provide an auditable safety floor; the LLM reasons, judges, and explains.
-- **Cost-aware** — tool calls, math, and name matching are plain Python; the LLM is used only where reasoning adds value (~3–6 calls per case, $0 on a local model).
-- **Explainable & auditable** — reasoning + confidence per agent, a full audit timeline, an evidence-backed risk-factor breakdown, and cited policies for every decision.
-- **Fail-safe** — incomplete data → request more info; a failed tool → manual review (never a SAR on bad data); a human always makes the final call.
+- **Hybrid, not pure-LLM** — deterministic rules/graph/screening compute facts and provide an auditable safety floor; the LLM reasons, judges, and explains. 6 of 16 agents use no LLM at all (recorded as `model_name: null`).
+- **Traceable** — every risk factor references **evidence by ID**, and each `EvidenceItem` points to the exact source (a transaction, a profile field, a watchlist entry). One hop from any score back to the raw fact.
+- **Fail-safe** — incomplete data → request more info; a failed tool, a watchlist match, or degraded data → manual review (never a SAR on bad data); a human always makes the final call.
+- **Calibrated, not self-reported** — confidence is derived from objective signals (data quality, policy found, tool failures, evidence strength), not "the LLM says 87%".
+- **Cost-aware** — math, name matching, and graph analysis are plain Python; the LLM is used only where reasoning adds value ($0 on a local model).
 
 ---
 
 ## Key features
 
-- **Multi-agent orchestration** (LangGraph) with parallel investigation and conditional routing
-- **Real RAG** — embeddings + **cross-encoder reranking**, with scored **policy citations**
-- **Policy documents as files** — drop your own `.md` / `.pdf` policies into `app/tools/policies/`; the system auto-re-indexes them
-- **Short- + long-term memory** — graph state per case, plus customer history that **boosts repeat-offender risk**
-- **Explainable risk scoring** — rule + AI blend with a **factor-by-factor breakdown + evidence**
-- **Human-in-the-loop** — structured decisions, SAR edits, risk overrides, and a bounded **re-investigation loop**
-- **Data-quality gate** and **error policy** (failed tool → manual review)
-- **Persistent audit trail** — every case, event, agent output, risk assessment, SAR, and decision saved to Supabase (survives restarts)
-- **SAR export** to **PDF / DOCX / Markdown**
-- **Live progress streaming** (Server-Sent Events) so the UI shows each agent completing in real time
-- **Offline test suite** (pytest) with golden typology tests
+- **16-agent orchestration** (LangGraph) with **8 parallel** investigation agents and **fail-safe conditional routing**
+- **Relationship-graph network analysis** — layering / money-mule detection (fan-out, forwarding chains, common collectors, circular flow) with a graph risk score
+- **Account behaviour baseline** — scores deviation from the customer's *own* normal (amount spikes, new countries, off-hours, dormant-account reactivation)
+- **Adverse-media screening** + multi-list **watchlist** screening (sanctions / PEP / blacklist)
+- **Real RAG** — heading-aware chunking + cross-encoder reranking, with section-level **policy citations**; upload your own `.md`/`.pdf` policies and the system **auto-re-indexes**
+- **Economic-purpose & source-of-funds** awareness (per SC guidance on clarifying unusual transactions)
+- **Structured evidence layer** — every claim is a traceable `EvidenceItem`; risk factors reference evidence IDs
+- **Calibrated confidence**, **risk-aware priority + SLA deadlines**, and a graded **data-quality severity**
+- **Case status lifecycle** — an enforced state machine (`NEW → … → APPROVED_FOR_STR_REVIEW`) that rejects impossible transitions
+- **False-positive workflow** + **auto-close clearance notes** (the system never silently closes a case)
+- **Analyst feedback learning** — overrides + corrected typologies lower confidence on similar future cases
+- **Model governance** — every output records model / prompt / ruleset / policy version for reproducibility
+- **Human-in-the-loop** — structured decisions, SAR edits, risk overrides, bounded re-investigation
+- **Full audit trail in Supabase** — cases, evidence, rule hits, policy citations, status history, SAR drafts, decisions (survives restarts); `GET /case/{id}/trace` returns the whole chain
+- **12-section regulator-style SAR** exported to **PDF / DOCX / Markdown**
+- **Live progress streaming** (SSE) so the UI shows each agent completing in real time
+- **Evaluation suite** — golden AML scenarios scoring typology / routing / retrieval / FP-clearance / SAR-completeness, plus **107 offline unit tests**
 
 ---
 
@@ -96,15 +105,15 @@ flowchart TD
 
 | Layer | Technology |
 |-------|-----------|
-| Orchestration | LangGraph |
+| Orchestration | LangGraph (StateGraph, parallel fan-out, `interrupt()` HITL, checkpointer) |
 | LLM | Qwen 2.5 (local, via Ollama) — OpenAI-compatible API |
 | Embeddings | nomic-embed-text (Ollama) |
 | Vector DB / RAG | ChromaDB + `ms-marco-MiniLM` cross-encoder reranker |
 | Relational DB / audit | Supabase (Postgres) |
-| Watchlist matching | rapidfuzz |
+| Watchlist / name matching | rapidfuzz |
 | API | FastAPI + Uvicorn (REST + SSE streaming) |
 | Document export | fpdf2 (PDF), python-docx (DOCX), PyMuPDF (policy PDF ingest) |
-| Tests | pytest |
+| Tests / evals | pytest + golden-case eval suite |
 
 ---
 
@@ -117,21 +126,28 @@ backend/
 ├── schema.sql              # Supabase source tables + seed data
 ├── schema_cases.sql        # Supabase audit/persistence tables
 ├── requirements.txt
-├── pytest.ini
-├── tests/                  # offline test suite (LLM + DB mocked)
+├── tests/                  # 107 offline unit tests (LLM + DB mocked)
+├── evals/                  # golden-case evaluation suite (rules / RAG / SAR quality)
 └── app/
-    ├── orchestrator.py     # wires the agents into the LangGraph
+    ├── orchestrator.py     # wires the 16 agents into the LangGraph
     ├── api/routes.py       # FastAPI endpoints (REST + SSE + export)
     ├── core/
     │   ├── config.py       # loads .env, all settings
-    │   └── state.py        # the shared CaseState
+    │   ├── state.py        # the shared CaseState
+    │   ├── evidence.py     # structured EvidenceItem + traceability
+    │   ├── baseline.py     # account behaviour baseline + deviations
+    │   ├── priority.py     # risk-aware priority + SLA
+    │   ├── confidence.py   # confidence calibration
+    │   ├── case_status.py  # case lifecycle state machine
+    │   └── governance.py   # model-governance metadata
+    ├── rules/              # AML rule engine (yaml-driven) + country-risk register
     ├── agents/             # one file per agent + base.py (BaseAgent)
-    ├── services/
-    │   ├── llm.py          # Qwen chat + embeddings
-    │   └── persistence.py  # Supabase audit-trail writes/reads
+    ├── services/           # llm.py (Qwen), persistence.py, sar_render.py
     ├── tools/
     │   ├── db.py           # Supabase queries
-    │   ├── rag.py          # ChromaDB + reranking + citations
+    │   ├── rag.py          # ChromaDB + chunking + reranking + citations
+    │   ├── adverse_media.py# negative-news screening
+    │   ├── graph_analysis.py # money-flow network analysis
     │   └── policies/       # policy documents (.md / .pdf) indexed by RAG
     └── data/scenarios.py   # demo alerts
 ```
@@ -169,11 +185,11 @@ ollama pull nomic-embed-text
 
 ### 4. Set up Supabase
 1. Create a project at [supabase.com](https://supabase.com).
-2. In the **SQL Editor**, run [`backend/schema.sql`](backend/schema.sql) (source data) **and** [`backend/schema_cases.sql`](backend/schema_cases.sql) (audit/persistence tables).
+2. In the **SQL Editor**, run [`backend/schema.sql`](backend/schema.sql) (source data) **and** [`backend/schema_cases.sql`](backend/schema_cases.sql) (audit/persistence tables). Both are idempotent — safe to re-run.
 3. From **Settings → API**, copy the **Project URL** and the **Secret** key.
 
 ### 5. Configure environment
-Create `backend/.env` (copy from `backend/.env.example`):
+Create `backend/.env`:
 ```
 OLLAMA_BASE_URL=http://localhost:11434/v1
 CHAT_MODEL=qwen2.5:7b
@@ -193,34 +209,33 @@ Make sure Ollama is running and your venv is active. From `backend/`:
 ```bash
 python main.py
 ```
-Pick a demo case; it runs the full investigation, prints findings + risk breakdown + SAR draft, and pauses for your decision.
+Pick a demo case; it runs the full investigation, prints findings + risk breakdown + priority/SLA + confidence + SAR draft, and pauses for your decision.
 
 ### API server
 ```bash
 python server.py
 ```
-Open **http://localhost:8000/docs** for an interactive UI. Check **`GET /health/ready`** first — it confirms Ollama + Supabase are reachable.
+Open **http://localhost:8000/docs**. Check **`GET /health/ready`** first — it confirms Ollama + Supabase are reachable.
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET | `/health` · `/health/ready` | liveness · dependency check |
 | GET | `/scenarios` | list demo alerts |
-| POST | `/investigate` | run a case (blocking; pauses at HITL) |
-| POST | `/investigate/stream` | run a case, **streaming agent progress (SSE)** |
-| GET | `/cases` | list all investigated cases |
-| GET | `/case/{id}` | full case state |
-| GET | `/case/{id}/status` | lightweight status poll |
-| GET | `/case/{id}/audit` | audit timeline + events |
-| GET | `/case/{id}/sar` | the SAR draft text |
-| POST | `/case/{id}/decision` | approve / reject / edit / request_more_info |
+| POST | `/investigate` · `/investigate/stream` | run a case (blocking · **streaming SSE**) |
+| GET | `/cases` · `/case/{id}` | list cases · full case state |
+| GET | `/case/{id}/status` · `/audit` · `/sar` | status poll · audit timeline · SAR text |
+| GET | `/case/{id}/timeline` · `/evidence` · `/trace` | annotated timeline · evidence pool · **full audit chain** |
+| POST | `/case/{id}/decision` | approve / reject / edit / request_more_info (+ feedback) |
 | POST | `/case/{id}/rerun-agent/{name}` | re-run a single agent |
 | POST | `/case/{id}/export-sar?format=pdf\|docx\|markdown` | download the SAR report |
+| GET/POST/DELETE | `/policies` · `/policies/upload` · `/policies/reindex` | manage policy docs (auto re-index) |
+| GET | `/rules` · `/country-risk` · `/watchlist` · `/case-statuses` | configuration + lifecycle |
 
-### Tests
+### Tests + evals
 ```bash
-pytest
+pytest                       # 107 offline unit tests (LLM + DB mocked), ~6s
+python evals/run_all.py      # golden AML scenarios: typology / routing / RAG / SAR
 ```
-Runs fully offline (LLM + DB mocked) in a few seconds — including **golden typology tests** that verify structuring, money-mule, layering, and false-positive detection.
 
 ---
 
@@ -230,16 +245,17 @@ Runs fully offline (LLM + DB mocked) in a few seconds — including **golden typ
 |------|----------------------|---------|
 | AML-2026-001 | Structuring (sub-threshold, overseas) | High → SAR |
 | AML-2026-002 | Money mule (large in → forwarded out) | Critical → SAR + EDD |
-| AML-2026-003 | Layering / dispersion | Elevated → SAR |
-| AML-2026-004 | False positive (known supplier) | Low → auto-closed, no SAR |
+| AML-2026-003 | Layering / dispersion | Elevated → SAR (with **money-flow graph**) |
+| AML-2026-004 | False positive (known supplier) | Low → auto-closed |
 | AML-2026-005 | Repeat offender (run after 001) | **Long-term memory boosts risk** |
 | AML-2026-006 | Unknown customer, no data | **NEEDS_MORE_INFORMATION** (gate halts it) |
+| AML-2026-007 | Documented supplier payment, volume-flagged | **False-positive review → auto-close with clearance note** |
 
 ---
 
 ## Notes
 
-- First run downloads the cross-encoder reranker (~80MB) and builds the ChromaDB policy store from `app/tools/policies/` automatically; it re-indexes whenever a policy file changes.
+- First run downloads the cross-encoder reranker (~80MB) and builds the ChromaDB policy store from `app/tools/policies/` automatically; it re-indexes whenever a policy file changes or one is uploaded.
 - Generated artifacts (`backend/chroma_db/`, `venv/`) and secrets (`.env`) are gitignored and rebuilt/supplied on demand.
 - On a CPU-only machine, a full case takes ~1–2 minutes on the 7B model; the 3B model is faster.
-- Persistence and the audit trail are best-effort — if the Supabase audit tables aren't created, investigations still run (with a logged warning).
+- Persistence and the audit trail are **best-effort** — if the Supabase audit tables aren't created, investigations still run (with a logged warning).
