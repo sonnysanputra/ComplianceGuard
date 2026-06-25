@@ -34,6 +34,11 @@ def persist_case(state: dict, status: str) -> bool:
         tri = state.get("triage", {})
         tf = state.get("transaction_findings", {})
 
+        # capture the prior status so we can log the transition
+        prev = (db.table("cases").select("status")
+                .eq("case_id", case_id).execute().data or [])
+        old_status = prev[0]["status"] if prev else None
+
         # 1) the case row (upsert on case_id)
         db.table("cases").upsert({
             "case_id":        case_id,
@@ -52,10 +57,51 @@ def persist_case(state: dict, status: str) -> bool:
             "updated_at":     _now(),
         }).execute()
 
+        # log the status transition (append-only history)
+        if status != old_status:
+            db.table("case_status_history").insert({
+                "case_id": case_id, "old_status": old_status, "new_status": status,
+                "changed_by": "system", "reason": "automated case transition",
+            }).execute()
+
         # clear child rows so a re-run doesn't duplicate them
+        # (case_status_history is append-only -- never cleared)
         for tbl in ("case_events", "agent_outputs", "risk_assessments",
-                    "sar_drafts", "watchlist_matches"):
+                    "sar_drafts", "watchlist_matches", "evidence_items",
+                    "rule_hits", "policy_citations"):
             db.table(tbl).delete().eq("case_id", case_id).execute()
+
+        # structured evidence pool -- every claim is traceable to one of these
+        evidence = state.get("evidence", [])
+        if evidence:
+            db.table("evidence_items").insert([{
+                "evidence_id": e.get("evidence_id"), "case_id": case_id,
+                "source_type": e.get("source_type"), "source_id": e.get("source_id"),
+                "field": e.get("field"), "value": e.get("value"),
+                "description": e.get("description"),
+            } for e in evidence]).execute()
+
+        # triggered AML rules + the evidence IDs each one relied on
+        factors = state.get("risk_factors", [])
+        if factors:
+            db.table("rule_hits").insert([{
+                "case_id": case_id, "rule_id": f.get("rule_id"),
+                "rule_name": f.get("factor") or f.get("name"),
+                "typology": tf.get("typology"), "severity": f.get("severity"),
+                "points": f.get("points"), "evidence_ids": f.get("evidence_ids") or [],
+            } for f in factors]).execute()
+
+        # policy citations retrieved + reranked by the RAG layer
+        policies = state.get("retrieved_policies", [])
+        if policies:
+            db.table("policy_citations").insert([{
+                "case_id": case_id, "policy_id": p.get("policy_id"),
+                "title": p.get("title"), "section": p.get("section"),
+                "category": p.get("category"),
+                "content_excerpt": (p.get("excerpt") or p.get("content") or "")[:500] or None,
+                "retrieval_score": p.get("retrieval_score"),
+                "rerank_score": p.get("rerank_score"),
+            } for p in policies]).execute()
 
         # watchlist screening matches
         wl_matches = (state.get("watchlist_findings") or {}).get("all_matches", [])
@@ -131,9 +177,19 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
         }).execute()
         # request_more_info keeps the case open; everything else closes it
         status = "needs_more_info" if decision == "request_more_info" else "closed"
+        prev = (db.table("cases").select("status")
+                .eq("case_id", case_id).execute().data or [])
+        old_status = prev[0]["status"] if prev else None
         db.table("cases").update(
             {"status": status, "updated_at": _now()}
         ).eq("case_id", case_id).execute()
+        # record the human-driven transition
+        if status != old_status:
+            db.table("case_status_history").insert({
+                "case_id": case_id, "old_status": old_status, "new_status": status,
+                "changed_by": analyst_id or "analyst",
+                "reason": f"Analyst decision: {decision}" + (f" - {notes}" if notes else ""),
+            }).execute()
         return True
     except Exception as exc:
         logger.warning(f"[persistence] could not save decision: {exc}")
@@ -179,6 +235,44 @@ def get_case_events(case_id: str) -> list[dict]:
     except Exception as exc:
         logger.warning(f"[persistence] could not get events: {exc}")
         return []
+
+
+def _read_case_rows(table: str, case_id: str, order: str = "id") -> list[dict]:
+    """Generic best-effort read of a case's child rows from an audit table."""
+    try:
+        return (client().table(table).select("*")
+                .eq("case_id", case_id).order(order).execute().data or [])
+    except Exception as exc:
+        logger.warning(f"[persistence] could not read {table}: {exc}")
+        return []
+
+
+def get_case_evidence(case_id: str) -> list[dict]:
+    return _read_case_rows("evidence_items", case_id, order="evidence_id")
+
+
+def get_case_rule_hits(case_id: str) -> list[dict]:
+    return _read_case_rows("rule_hits", case_id)
+
+
+def get_case_policy_citations(case_id: str) -> list[dict]:
+    return _read_case_rows("policy_citations", case_id)
+
+
+def get_case_status_history(case_id: str) -> list[dict]:
+    return _read_case_rows("case_status_history", case_id)
+
+
+def get_case_trace(case_id: str) -> dict:
+    """The full audit chain for a case: evidence -> rules -> policy -> status history.
+    Backs the claim that every decision is traceable end to end."""
+    return {
+        "evidence": get_case_evidence(case_id),
+        "rule_hits": get_case_rule_hits(case_id),
+        "policy_citations": get_case_policy_citations(case_id),
+        "status_history": get_case_status_history(case_id),
+        "decisions": _read_case_rows("human_decisions", case_id),
+    }
 
 
 def get_case_sar(case_id: str) -> str | None:

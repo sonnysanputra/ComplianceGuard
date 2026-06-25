@@ -95,3 +95,59 @@ create table if not exists human_decisions (
     final_risk_level text,       -- analyst override of the risk level
     created_at       timestamptz default now()
 );
+
+-- ====================================================================
+-- Full auditability: evidence, triggered rules, policy citations, and
+-- the complete status history. Together these make every decision
+-- traceable to its evidence, rules, policy basis, and human approval.
+-- ====================================================================
+
+-- Every structured evidence item behind the case's claims
+create table if not exists evidence_items (
+    evidence_id text primary key,
+    case_id     text references cases(case_id),
+    source_type text not null,   -- transaction | customer_profile | watchlist | policy | memory | analyst_note | rule
+    source_id   text,
+    field       text,
+    value       jsonb,
+    description text,
+    created_at  timestamptz default now()
+);
+
+-- Each AML rule that fired, with the evidence IDs it relied on
+create table if not exists rule_hits (
+    id           bigserial primary key,
+    case_id      text references cases(case_id),
+    rule_id      text,
+    rule_name    text,
+    typology     text,
+    severity     text,
+    points       integer,
+    evidence_ids jsonb,           -- the EvidenceItem IDs supporting this rule
+    created_at   timestamptz default now()
+);
+
+-- The policies retrieved + reranked by the RAG layer for this case
+create table if not exists policy_citations (
+    id              bigserial primary key,
+    case_id         text references cases(case_id),
+    policy_id       text,
+    title           text,
+    section         text,
+    category        text,
+    content_excerpt text,
+    retrieval_score numeric,
+    rerank_score    numeric,
+    created_at      timestamptz default now()
+);
+
+-- Append-only status transitions (who changed it, why, and when)
+create table if not exists case_status_history (
+    id         bigserial primary key,
+    case_id    text references cases(case_id),
+    old_status text,
+    new_status text,
+    changed_by text,
+    reason     text,
+    created_at timestamptz default now()
+);

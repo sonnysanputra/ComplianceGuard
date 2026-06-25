@@ -40,6 +40,7 @@ from app.rules.country_risk import get_country_risk
 from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
+    get_case_trace,
 )
 from app.services.sar_render import sar_to_sections
 
@@ -539,6 +540,13 @@ def case_evidence(case_id: str):
     """The structured evidence pool -- every EvidenceItem behind the case's claims."""
     v = graph.get_state({"configurable": {"thread_id": case_id}}).values
     return {"case_id": case_id, "evidence": (v or {}).get("evidence", [])}
+
+
+@app.get("/case/{case_id}/trace")
+def case_trace(case_id: str):
+    """The full persisted audit chain -- evidence, triggered rules, policy
+    citations, status history, and human decisions. Every decision is traceable."""
+    return {"case_id": case_id, **get_case_trace(case_id)}
 
 
 @app.get("/case/{case_id}/sar", response_model=SARResponse)
