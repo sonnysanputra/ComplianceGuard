@@ -41,6 +41,7 @@ from app.tools.rag import load_policies, reset_policy_collection
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
 )
+from app.services.sar_render import sar_to_sections
 
 # agent instances that are safe to re-run standalone (no human interrupt)
 from app.agents.alert_intake import alert_intake
@@ -134,6 +135,7 @@ class CaseSnapshot(BaseModel):
     recommendation: Optional[str] = None
     risk_explanation: Optional[str] = None
     fp_review: Optional[dict] = None
+    sar_package: Optional[dict] = None
     sar_draft: Optional[str] = None
     review: Optional[dict] = None
     human_decision: Optional[str] = None
@@ -218,6 +220,7 @@ def _snapshot(case_id: str) -> dict:
         "risk_factors": v.get("risk_factors"), "key_drivers": v.get("key_drivers"),
         "recommendation": v.get("recommendation"),
         "risk_explanation": v.get("risk_explanation"),
+        "sar_package": v.get("sar_package"),
         "sar_draft": v.get("sar_draft"), "review": v.get("review"),
         "human_decision": v.get("human_decision"),
         "human_review": v.get("human_review"), "errors": v.get("errors"),
@@ -227,7 +230,18 @@ def _snapshot(case_id: str) -> dict:
 
 
 def _report_sections(snap: dict) -> list[tuple[str, list[str]]]:
-    """The full SAR report content as (heading, lines) sections."""
+    """The full SAR report content as (heading, lines) sections.
+
+    If a structured SAR package exists, render the regulator-style 12-section
+    report from it (overlaying the live human decision + audit trail). Otherwise
+    fall back to the generic case summary (low-risk / auto-closed cases)."""
+    pkg = snap.get("sar_package")
+    if pkg:
+        sections = sar_to_sections(pkg, human_review=snap.get("human_review"))
+        if snap.get("audit"):
+            sections.append(("Audit Timeline", list(snap["audit"])))
+        return sections
+
     tri = snap.get("triage") or {}
     tf = snap.get("transaction_findings") or {}
     kyc = snap.get("kyc_findings") or {}

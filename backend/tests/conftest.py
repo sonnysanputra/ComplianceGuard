@@ -112,3 +112,6 @@ def offline(monkeypatch):
                         lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.false_positive_review.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
+    monkeypatch.setattr("app.agents.sar_drafting.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.sar_drafting.get_transactions",
+                        lambda cid: TRANSACTIONS.get(cid, []))

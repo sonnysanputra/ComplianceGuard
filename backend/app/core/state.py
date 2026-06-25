@@ -30,7 +30,8 @@ class CaseState(TypedDict, total=False):
     risk_explanation: str
     recommendation: str
     fp_review: dict          # false-positive review outcome (sub-threshold cases)
-    sar_draft: str
+    sar_package: dict        # structured 12-section SAR draft (regulator style)
+    sar_draft: str           # rendered Markdown of the SAR package
     review: dict
     human_decision: str
     human_review: dict       # full analyst decision: id, note, overrides
