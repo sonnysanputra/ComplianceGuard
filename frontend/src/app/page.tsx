@@ -2,22 +2,29 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type CaseSummary, type Scenario } from "@/lib/api";
+import { api, type CaseSummary, type Scenario, type LearningSummary } from "@/lib/api";
 import { Card, CardLabel, Pill, Spinner, statusTone, prettyStatus } from "@/components/ui";
 import RunDialog from "@/components/RunDialog";
-import { Play, RefreshCw, TrendingDown, FolderCheck, FileText, Layers, Plus } from "lucide-react";
+import { Play, RefreshCw, TrendingDown, FolderCheck, FileText, Layers, Plus, Sparkles } from "lucide-react";
+
+const EMPTY_LEARNING: LearningSummary = { patterns_learned: 0, patterns: [] };
 
 export default function Dashboard() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [learning, setLearning] = useState<LearningSummary>(EMPTY_LEARNING);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [run, setRun] = useState<Scenario | null>(null);
 
   async function load() {
     try {
-      const [s, c] = await Promise.all([api.scenarios(), api.cases().catch(() => [])]);
-      setScenarios(s); setCases(c); setErr(null);
+      const [s, c, l] = await Promise.all([
+        api.scenarios(),
+        api.cases().catch(() => []),
+        api.learning().catch(() => EMPTY_LEARNING),
+      ]);
+      setScenarios(s); setCases(c); setLearning(l); setErr(null);
     } catch {
       setErr("Cannot reach the backend at :8000. Start it from backend/ with `python server.py`.");
     } finally { setLoading(false); }
@@ -51,6 +58,8 @@ export default function Dashboard() {
         <Metric icon={<FileText size={18} />} label="Escalated to SAR" value={String(s.sar)} hint="high-risk → analyst" tone="orange" />
         <Metric icon={<TrendingDown size={18} />} label="FP reduction" value={s.fp} hint="cleared without a human" tone="violet" />
       </div>
+
+      <LearningBanner learning={learning} />
 
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
@@ -107,6 +116,40 @@ export default function Dashboard() {
 
       {run && <RunDialog scenario={run} onClose={() => { setRun(null); load(); }} />}
     </div>
+  );
+}
+
+function LearningBanner({ learning }: { learning: LearningSummary }) {
+  const n = learning.patterns_learned;
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-bg text-violet">
+            <Sparkles size={18} />
+          </span>
+          <div>
+            <CardLabel>Self-learning triage</CardLabel>
+            <p className="mt-0.5 text-sm text-ink2">
+              {n === 0
+                ? "No patterns learned yet — clear a false positive and the system remembers it for every customer."
+                : `${n} false-positive ${n === 1 ? "pattern" : "patterns"} learned from analyst feedback — applied across all customers.`}
+            </p>
+          </div>
+        </div>
+        <span className="text-3xl font-extrabold tracking-tight">{n}</span>
+      </div>
+      {learning.patterns.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {learning.patterns.slice(0, 8).map((p, i) => (
+            <span key={`${p.recipient}-${i}`} className="rounded-lg bg-soft px-2.5 py-1 text-xs text-ink2">
+              <span className="font-semibold text-ink">{p.recipient}</span>
+              {p.source_case_id ? <span className="text-ink3"> · {p.source_case_id}</span> : null}
+            </span>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

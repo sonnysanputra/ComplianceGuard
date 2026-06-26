@@ -137,6 +137,19 @@ export interface CaseSnapshot {
   a2a_messages?: { from: string; status?: string; confidence?: number; duration_ms?: number }[];
 }
 
+export interface LearnedPattern {
+  recipient?: string;
+  typology?: string | null;
+  source_case_id?: string;
+  source_customer_id?: string;
+  created_at?: string;
+}
+
+export interface LearningSummary {
+  patterns_learned: number;
+  patterns: LearnedPattern[];
+}
+
 export interface AuditEvent {
   id?: number;
   case_id?: string;
@@ -173,6 +186,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 export const api = {
   scenarios: () => get<Scenario[]>("/scenarios"),
   cases: () => get<CaseSummary[]>("/cases"),
+  learning: () => get<LearningSummary>("/learning"),
   case: (id: string) => get<CaseSnapshot>(`/case/${encodeURIComponent(id)}`),
   config: () => get<Record<string, unknown>>("/config"),
   rules: () => get<Record<string, unknown>>("/rules"),

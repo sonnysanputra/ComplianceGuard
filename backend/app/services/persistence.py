@@ -192,9 +192,14 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
                      analyst_agrees_with_ai: bool | None = None,
                      corrected_typology: str | None = None,
                      corrected_reason: str | None = None,
-                     feedback_tags: list | None = None) -> bool:
-    """Record a structured human decision (incl. analyst feedback for learning)
-    and update the case status."""
+                     feedback_tags: list | None = None,
+                     update_status: bool = True) -> bool:
+    """Record a structured human decision (incl. analyst feedback for learning).
+
+    When `update_status` is True the decision also drives the case lifecycle (the
+    normal HITL path). When False, the feedback is recorded WITHOUT moving the
+    case status -- used when an analyst annotates an already-closed case (e.g.
+    confirming an auto-cleared false positive so the system learns from it)."""
     try:
         db = client()
         db.table("human_decisions").insert({
@@ -206,15 +211,16 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
             "feedback_tags": feedback_tags,
         }).execute()
         # map the decision onto the lifecycle (approve -> APPROVED_FOR_STR_REVIEW, etc.)
-        status = status_for_decision(decision)
-        prev = (db.table("cases").select("status")
-                .eq("case_id", case_id).execute().data or [])
-        old_status = prev[0]["status"] if prev else None
-        db.table("cases").update(
-            {"status": status, "updated_at": _now()}
-        ).eq("case_id", case_id).execute()
+        if update_status:
+            status = status_for_decision(decision)
+            prev = (db.table("cases").select("status")
+                    .eq("case_id", case_id).execute().data or [])
+            old_status = prev[0]["status"] if prev else None
+            db.table("cases").update(
+                {"status": status, "updated_at": _now()}
+            ).eq("case_id", case_id).execute()
         # record the human-driven transition
-        if status != old_status:
+        if update_status and status != old_status:
             if not is_valid_transition(old_status, status):
                 logger.warning(f"[persistence] unexpected status transition "
                                f"{old_status} -> {status} for case {case_id}")
@@ -223,10 +229,66 @@ def persist_decision(case_id: str, decision: str, analyst_id: str | None = None,
                 "changed_by": analyst_id or "analyst",
                 "reason": f"Analyst decision: {decision}" + (f" - {notes}" if notes else ""),
             }).execute()
+
+        # cross-customer learning: a false-positive disposition teaches the system
+        # to recognise this benign vendor on any future case.
+        if _is_false_positive(feedback_tags, analyst_agrees_with_ai):
+            save_learned_pattern(case_id, feedback_tags=feedback_tags,
+                                  corrected_typology=corrected_typology)
         return True
     except Exception as exc:
         logger.warning(f"[persistence] could not save decision: {exc}")
         return False
+
+
+def _is_false_positive(feedback_tags: list | None,
+                       analyst_agrees_with_ai: bool | None) -> bool:
+    """A disposition that marks the AI's suspicion as benign -- the signal we learn from."""
+    return ("false_positive" in (feedback_tags or [])) or (analyst_agrees_with_ai is False)
+
+
+# ---- cross-customer learning: distil + recall analyst false-positive feedback ----
+def save_learned_pattern(case_id: str, feedback_tags: list | None = None,
+                         corrected_typology: str | None = None) -> bool:
+    """Distil a portable suppression signature (the cleared recipient/vendor) from a
+    case an analyst marked as a false positive, so a SIMILAR alert on any other
+    customer is recognised. Best-effort -- never blocks the decision flow."""
+    try:
+        db = client()
+        rows = (db.table("cases").select("recipient, country, typology, customer_id")
+                .eq("case_id", case_id).execute().data or [])
+        if not rows:
+            return False
+        case = rows[0]
+        recipient = (case.get("recipient") or "").strip()
+        if not recipient or recipient.lower() in ("multiple recipients", "unknown beneficiary"):
+            return False   # nothing portable to learn from a non-specific recipient
+        db.table("learned_patterns").insert({
+            "pattern_type":       "cleared_recipient",
+            "recipient":          recipient.lower(),
+            "country":            case.get("country"),
+            "typology":           corrected_typology or case.get("typology"),
+            "source_case_id":     case_id,
+            "source_customer_id": case.get("customer_id"),
+            "feedback_tags":      feedback_tags,
+        }).execute()
+        logger.info(f"[persistence] learned cleared-recipient pattern '{recipient}' "
+                    f"from case {case_id}")
+        return True
+    except Exception as exc:
+        logger.warning(f"[persistence] could not save learned pattern: {exc}")
+        return False
+
+
+def get_learned_patterns() -> list[dict]:
+    """Every learned suppression pattern across all cases/customers (the team's
+    accumulated false-positive knowledge). Best-effort -- returns [] on failure."""
+    try:
+        return (client().table("learned_patterns").select("*")
+                .order("id", desc=True).execute().data or [])
+    except Exception as exc:
+        logger.warning(f"[persistence] could not load learned patterns: {exc}")
+        return []
 
 
 # ---- long-term memory: a customer's history across past investigations ----

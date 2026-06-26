@@ -16,7 +16,7 @@ human analyst, NOT an automatic STR submission (human_review_required is always 
 
 from datetime import datetime
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.core.governance import governance as _governance
 from app.services.sar_render import sar_to_markdown
@@ -32,6 +32,18 @@ RULES (strict)
 - Formal, factual, regulatory tone. No speculation beyond the evidence.
 - Each suspicious indicator must cite a specific fact (an amount, a count, a name).
 """
+
+# QA self-validation (folded in from the former Compliance Review Agent): the
+# drafting agent checks its own draft only makes claims the findings support,
+# before handing it to a human -- no separate node, one reporting step.
+REVIEW_PROMPT = """You are a compliance QA reviewer checking a draft Suspicious Activity \
+Report (SAR) before it reaches a human analyst.
+
+Verify the draft makes ONLY claims supported by the investigation findings (the ground
+truth). Flag any unsupported / invented statement -- e.g. calling a country high-risk
+when it is not in the findings, citing a typology that was not detected, asserting a
+watchlist hit when none was found, or stating a fact not present in the findings.
+Then score the draft's quality (clarity, completeness, accuracy) from 0-100."""
 
 
 class SARDraftingAgent(BaseAgent):
@@ -83,14 +95,71 @@ class SARDraftingAgent(BaseAgent):
         package = self._build_package(state, cust, txns, indicators, narrative, recommended)
         draft_md = sar_to_markdown(package)
 
-        rationale = "Assembled a structured 12-section SAR draft package grounded in the findings."
+        # ---- QA self-validation (folded-in Compliance Review): confirm the draft
+        #      only makes evidence-backed claims before a human sees it ----
+        review = self._self_review(state, draft_md)
+
+        rationale = ("Assembled a structured 12-section SAR draft package grounded in the "
+                     f"findings; self-review quality {review['quality_score']}/100, "
+                     f"{'claims supported' if review['claims_supported'] else 'unsupported claims flagged'}.")
         return {
             "sar_package": package,
             "sar_draft": draft_md,           # rendered Markdown (display / persistence / export)
+            "review": review,
             "audit_rationales": [self.trace(
                 rationale, 0.85,
-                evidence=[f"{len(indicators)} indicators", f"{len(policies)} policies cited"])],
-            "audit": stamp(f"{self.label} drafted SAR package ({len(indicators)} indicators)"),
+                evidence=[f"{len(indicators)} indicators", f"{len(policies)} policies cited",
+                          f"quality {review['quality_score']}/100"],
+                output={"quality": review["quality_score"],
+                        "supported": review["claims_supported"]})],
+            "audit": stamp(f"{self.label} drafted + self-reviewed SAR package "
+                           f"({len(indicators)} indicators, quality {review['quality_score']}/100)"),
+        }
+
+    # ---- QA gate: required sections present + claims supported by findings ----
+    REQUIRED_SECTIONS = ["Customer Information", "Suspicious Indicators",
+                         "Risk Assessment", "Recommended Action"]
+
+    def _self_review(self, state, draft: str) -> dict:
+        missing = [s for s in self.REQUIRED_SECTIONS if s.lower() not in draft.lower()]
+        completeness = round((len(self.REQUIRED_SECTIONS) - len(missing)) / len(self.REQUIRED_SECTIONS), 2)
+
+        findings = {
+            "typology": (state.get("transaction_findings") or {}).get("typology"),
+            "risk_score": state.get("risk_score"),
+            "risk_level": state.get("risk_level"),
+            "watchlist_match": (state.get("watchlist_findings") or {}).get("is_match"),
+            "watchlist_verdict": (state.get("watchlist_findings") or {}).get("verdict"),
+            "kyc_checks_failed": (state.get("kyc_findings") or {}).get("checks_failed"),
+            "edd_required": (state.get("kyc_findings") or {}).get("edd_required"),
+            "cited_policies": [p.get("policy_id") for p in state.get("retrieved_policies", [])],
+        }
+        review = self.think(
+            system=REVIEW_PROMPT,
+            prompt=(
+                f"FINDINGS (ground truth):\n{findings}\n\n"
+                f"SAR DRAFT:\n{draft[:1600]}\n\n"
+                "Return ONLY this JSON:\n"
+                "{\n"
+                '  "claims_supported": <true|false>,\n'
+                '  "unsupported_claims": ["<any invented/unsupported statement>"],\n'
+                '  "quality_score": <0-100>,\n'
+                '  "confidence": <0-100>,\n'
+                '  "reasoning": "<2-3 sentences>"\n'
+                "}\n\n"
+                f"{CONFIDENCE_RUBRIC}"
+            ),
+        )
+        supported = bool(review.get("claims_supported", True))
+        return {
+            "complete": len(missing) == 0,
+            "missing_sections": missing,
+            "completeness_score": completeness,
+            "quality_score": int(review.get("quality_score", 80)),
+            "claims_supported": supported,
+            "unsupported_claims": review.get("unsupported_claims", []) or [],
+            "status": ("Ready for human review" if (not missing and supported)
+                       else "Needs revision before review"),
         }
 
     # ---- deterministic assembly: facts -> 12-section package ----

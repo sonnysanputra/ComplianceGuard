@@ -127,6 +127,29 @@ alter table human_decisions add column if not exists corrected_reason       text
 alter table human_decisions add column if not exists feedback_tags          jsonb;
 
 -- ====================================================================
+-- Learned suppression patterns (CROSS-CUSTOMER false-positive learning).
+-- When an analyst clears a case as a false positive, we distil a portable
+-- signature (e.g. a cleared recipient/vendor) so a SIMILAR alert raised on
+-- ANY OTHER customer is recognised and down-weighted automatically -- with the
+-- originating analyst decision cited. This is what lets the triage copilot get
+-- measurably better as the team uses it, instead of re-reviewing the same
+-- benign vendors over and over.
+-- ====================================================================
+create table if not exists learned_patterns (
+    id                 bigserial primary key,
+    pattern_type       text,      -- e.g. cleared_recipient
+    recipient          text,      -- normalised recipient/vendor name (the match key)
+    country            text,
+    typology           text,      -- the typology the analyst said it really was (if any)
+    source_case_id     text,      -- the case the analyst cleared (the citation)
+    source_customer_id text,      -- whose case taught us this (match is cross-customer)
+    feedback_tags      jsonb,
+    times_applied      integer default 0,
+    created_at         timestamptz default now()
+);
+create index if not exists learned_patterns_recipient_idx on learned_patterns (recipient);
+
+-- ====================================================================
 -- Full auditability: evidence, triggered rules, policy citations, and
 -- the complete status history. Together these make every decision
 -- traceable to its evidence, rules, policy basis, and human approval.

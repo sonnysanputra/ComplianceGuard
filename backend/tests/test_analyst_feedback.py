@@ -51,3 +51,26 @@ def test_no_feedback_is_neutral(monkeypatch):
     mf = _run(monkeypatch, [], [])
     assert mf["analyst_false_positive_feedback"] == 0
     assert mf["memory_risk_direction"] == "neutral"
+
+
+def test_cross_customer_learned_pattern_suppresses(monkeypatch):
+    # An analyst cleared 'CloudHost Services' as a false positive on a DIFFERENT
+    # customer's case. A new alert to the same vendor must inherit that learning.
+    monkeypatch.setattr(cm, "get_customer", lambda cid: {"customer_id": cid, "previous_alerts": 0})
+    monkeypatch.setattr(cm, "get_customer_history",
+                        lambda cid, exclude_case_id="": {"cases": [], "decisions": []})
+    monkeypatch.setattr(cm, "get_learned_patterns", lambda: [
+        {"recipient": "cloudhost services", "source_case_id": "AML-2026-007",
+         "source_customer_id": "CUST-50001", "typology": None}])
+    state = {"alert": {"id": "AML-2026-008", "customer_id": "CUST-60002",
+                       "recipient": "CloudHost Services"}}
+    mf = case_memory.run(state)["memory_findings"]
+
+    ls = mf["learned_suppression"]
+    assert ls and ls["cross_customer"] is True
+    assert ls["source_case_id"] == "AML-2026-007"
+    # learned suppression drives the risk DOWN and cites the originating case
+    assert mf["memory_risk_direction"] == "reduce"
+    assert "AML-2026-007" in mf["memory_risk_signal"]
+    # and it is recorded as traceable evidence
+    assert mf["evidence_ids"]

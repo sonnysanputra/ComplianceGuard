@@ -1,13 +1,16 @@
 """
 The transaction timeline is chronological and annotates each event with a
 plain-language risk note an analyst can read top-to-bottom.
+
+The timeline is now built inside the Transaction Analysis Agent (it folds in the
+former standalone Timeline Agent), so we assert on its `timeline_findings` output.
 """
 
-from app.agents.stage2_investigation.transaction_timeline import transaction_timeline
+from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
 
 
 def _run(cid):
-    return transaction_timeline.run({"alert": {"customer_id": cid}})["timeline_findings"]
+    return transaction_analysis.run({"alert": {"customer_id": cid}})["timeline_findings"]
 
 
 def test_timeline_is_chronological():

@@ -42,7 +42,7 @@ from app.tools.rag import (
 )
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
-    get_case_trace, list_recent_events,
+    get_case_trace, list_recent_events, get_learned_patterns,
 )
 from app.services.sar_render import sar_to_sections
 from app.core.case_status import derive_status, ALL_STATUSES, VALID_TRANSITIONS
@@ -78,7 +78,6 @@ LABELS = {
     "case_memory": "Memory Agent",
     "risk_scoring": "Risk Scoring Agent",
     "sar_drafting": "SAR Drafting Agent",
-    "compliance_review": "Compliance Review Agent",
     "human_approval": "Human Approval",
 }
 
@@ -435,6 +434,24 @@ def config():
     }
 
 
+@app.get("/learning")
+def learning():
+    """The self-learning summary: suppression patterns the system has distilled from
+    analyst false-positive feedback (the cross-customer triage memory). Powers the
+    'patterns learned' dashboard tile -- proof the copilot improves with use."""
+    patterns = get_learned_patterns()
+    return {
+        "patterns_learned": len(patterns),
+        "patterns": [{
+            "recipient": p.get("recipient"),
+            "typology": p.get("typology"),
+            "source_case_id": p.get("source_case_id"),
+            "source_customer_id": p.get("source_customer_id"),
+            "created_at": p.get("created_at"),
+        } for p in patterns[:20]],
+    }
+
+
 @app.get("/audit-events")
 def audit_events(limit: int = 120):
     """Global audit log: recent agent + decision events across all cases."""
@@ -661,16 +678,23 @@ def case_sar(case_id: str):
 
 @app.post("/case/{case_id}/decision", response_model=CaseSnapshot)
 def decide(case_id: str, body: Decision):
-    """Resume a paused case with the analyst's structured decision.
-    'request_more_info' re-runs the investigation and pauses again."""
+    """Record the analyst's structured decision.
+
+    If the case is paused for human review, resume the graph with the decision
+    ('request_more_info' re-runs the investigation and pauses again). If the case
+    has already closed (e.g. an auto-cleared false positive), the feedback is still
+    recorded so the system LEARNS from it -- without changing the closed status."""
     cfg = {"configurable": {"thread_id": case_id}}
-    graph.invoke(Command(resume=body.model_dump()), cfg)
+    awaiting = "human_approval" in (graph.get_state(cfg).next or ())
+    if awaiting:
+        graph.invoke(Command(resume=body.model_dump()), cfg)
     persist_decision(case_id, body.decision, analyst_id=body.analyst_id,
                      notes=body.analyst_note, final_risk_level=body.final_risk_level,
                      analyst_agrees_with_ai=body.analyst_agrees_with_ai,
                      corrected_typology=body.corrected_typology,
                      corrected_reason=body.corrected_reason,
-                     feedback_tags=body.feedback_tags)
+                     feedback_tags=body.feedback_tags,
+                     update_status=awaiting)
     snap = _snapshot(case_id)
     persist_case(graph.get_state(cfg).values, status=snap["status"])
     return snap

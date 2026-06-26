@@ -364,13 +364,25 @@ def evaluate_aml_rules(customer: dict, transactions: list,
     # --- false-positive reduction (negative adjustment) ---
     if mem.get("memory_risk_direction") == "reduce":
         fp = R["false_positive"]
-        fp_ev = _render(fp.get("evidence_template"),
-                        {"prior_false_positives": mem.get("previous_false_positives", 0)})
+        learned = mem.get("learned_suppression")
+        if learned:
+            # cross-customer learning: a vendor the team already cleared
+            src = learned.get("source_case_id")
+            fp_ev = (f"Recipient '{learned.get('recipient')}' was cleared as a false "
+                     f"positive by an analyst on case {src}"
+                     + (" (different customer)" if learned.get("cross_customer") else "")
+                     + " -- applying learned suppression.")
+            fp_items = [ev("analyst_note", src, "cleared_recipient", learned.get("recipient"),
+                           f"Learned from analyst clearance on case {src}")]
+        else:
+            fp_ev = _render(fp.get("evidence_template"),
+                            {"prior_false_positives": mem.get("previous_false_positives", 0)})
+            fp_items = [ev("memory", cid, "previous_false_positives",
+                           mem.get("previous_false_positives", 0),
+                           "Prior false positive(s) for this customer")]
         fired.append(TriggeredRule(fp["rule_id"], fp["name"], fp["risk_adjustment"],
                                    fp["severity"], fp_ev, source="False positive check",
-                                   evidence_items=[ev("memory", cid, "previous_false_positives",
-                                       mem.get("previous_false_positives", 0),
-                                       "Prior false positive(s) for this customer")]))
+                                   evidence_items=fp_items))
 
     total = max(0, min(sum(r.points for r in fired), 100))
     return RuleResult(fired, total, det["typology"], flags)

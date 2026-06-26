@@ -25,12 +25,20 @@ class AutoClearanceAgent(BaseAgent):
         fp = state.get("fp_review") or {}
         wf = state.get("watchlist_findings") or {}
         am = state.get("adverse_media_findings") or {}
+        mem = state.get("memory_findings") or {}
         checks = fp.get("checks") or {}
         txns = get_transactions(alert["customer_id"])
         recipient = (alert.get("recipient") or "").strip().lower()
 
         # ---- build the evidence behind the clearance ----
         evidence = []
+        learned = mem.get("learned_suppression")
+        if learned:
+            evidence.append(
+                f"Recipient '{learned.get('recipient')}' was cleared as a false positive "
+                f"by an analyst on case {learned.get('source_case_id')}"
+                + (" (different customer) — learned suppression applied"
+                   if learned.get("cross_customer") else " — learned suppression applied"))
         paid_before = sum(1 for t in txns
                           if (t.get("recipient") or "").strip().lower() == recipient
                           and not t.get("is_new_recipient"))
