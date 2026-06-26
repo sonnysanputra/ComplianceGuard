@@ -1,25 +1,28 @@
 """
-Orchestrator -- the backend that wires the 9 agents into a LangGraph.
+Orchestrator -- wires the investigation agents into a LangGraph.
 
-Flow (mirrors the proposal's high-level workflow):
+Flow:
 
   START
-    -> alert_intake
-        |-> transaction_analysis -|
-        |-> kyc_profile           |  (run in parallel)
-        |-> watchlist_screening   |
-        |-> policy_rag            |
-        |-> case_memory          -|  (long-term memory: customer history)
-                -> risk_scoring
-                    -> [score >= 60] sar_drafting -> compliance_review -> human_approval -> END
-                    -> [score <  60] END   (low-risk early exit -- cost saver)
+    -> alert_intake -> data_quality (gate: halt if un-investigable)
+        |-> transaction_analysis  -|  (typology + annotated timeline)
+        |-> graph_analysis         |  (run in parallel)
+        |-> kyc_profile            |
+        |-> watchlist_screening    |
+        |-> adverse_media_screening|
+        |-> policy_rag             |
+        |-> case_memory           -|  (history + CROSS-CUSTOMER learned suppression)
+                -> risk_scoring  (rules + LLM, fail-safe router)
+                    -> high risk    -> sar_drafting (self-reviews) -> human_approval
+                    -> sub-threshold -> false_positive_review -> auto_close / human
+                    -> clean low     -> auto_close (clearance note)
 """
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 # the investigation agents that run in parallel
-INVESTIGATION = ["transaction_analysis", "transaction_timeline", "graph_analysis",
+INVESTIGATION = ["transaction_analysis", "graph_analysis",
                  "kyc_profile", "watchlist_screening", "adverse_media_screening",
                  "policy_rag", "case_memory"]
 MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
@@ -29,7 +32,6 @@ from app.rules.rule_engine import get_rules
 from app.agents.stage1_intake.alert_intake import alert_intake
 from app.agents.stage1_intake.data_quality import data_quality
 from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
-from app.agents.stage2_investigation.transaction_timeline import transaction_timeline
 from app.agents.stage2_investigation.graph_analysis import graph_analysis
 from app.agents.stage2_investigation.kyc_profile import kyc_profile
 from app.agents.stage2_investigation.watchlist_screening import watchlist_screening
@@ -40,7 +42,6 @@ from app.agents.stage3_scoring.risk_scoring import risk_scoring
 from app.agents.stage4_disposition.false_positive_review import false_positive_review
 from app.agents.stage4_disposition.auto_close import auto_close
 from app.agents.stage5_reporting.sar_drafting import sar_drafting
-from app.agents.stage5_reporting.compliance_review import compliance_review
 from app.agents.stage6_approval.human_approval import human_approval
 
 
@@ -131,7 +132,6 @@ def build_graph():
     g.add_node("alert_intake", alert_intake)
     g.add_node("data_quality", data_quality)
     g.add_node("transaction_analysis", transaction_analysis)
-    g.add_node("transaction_timeline", transaction_timeline)
     g.add_node("graph_analysis", graph_analysis)
     g.add_node("kyc_profile", kyc_profile)
     g.add_node("watchlist_screening", watchlist_screening)
@@ -142,7 +142,6 @@ def build_graph():
     g.add_node("false_positive_review", false_positive_review)
     g.add_node("auto_close", auto_close)
     g.add_node("sar_drafting", sar_drafting)
-    g.add_node("compliance_review", compliance_review)
     g.add_node("human_approval", human_approval)
 
     g.add_edge(START, "alert_intake")
@@ -163,8 +162,8 @@ def build_graph():
                             ["human_approval", "auto_close"])
     # auto-close emits a professional clearance note, then ends
     g.add_edge("auto_close", END)
-    g.add_edge("sar_drafting", "compliance_review")
-    g.add_edge("compliance_review", "human_approval")
+    # SAR drafting now self-reviews (folded-in QA), then goes straight to a human
+    g.add_edge("sar_drafting", "human_approval")
     # human decision: request_more_info loops back to investigate; else END
     g.add_conditional_edges("human_approval", route_after_approval, INVESTIGATION + [END])
 

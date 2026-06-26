@@ -44,3 +44,17 @@ def test_clean_transactions_score_zero():
     result = evaluate_aml_rules({"declared_income": 5000}, clean, {}, {})
     assert result.total_rule_score == 0
     assert result.typology == "none"
+
+
+def test_learned_suppression_applies_negative_adjustment_with_citation():
+    # A cross-customer learned pattern (memory direction = reduce) fires the
+    # false-positive rule, lowering the score and citing the originating case.
+    customer = {"customer_id": "CUST-60002", "declared_income": 28000}
+    memory = {"memory_risk_direction": "reduce",
+              "learned_suppression": {"recipient": "cloudhost services",
+                                      "source_case_id": "AML-2026-007",
+                                      "cross_customer": True}}
+    result = evaluate_aml_rules(customer, STRUCTURING, {}, memory)
+    fp = next(r for r in result.triggered_rules if r.points < 0)
+    assert "AML-2026-007" in fp.evidence            # cites the analyst's prior clearance
+    assert fp.evidence_items                          # traceable evidence attached

@@ -31,6 +31,10 @@ CUSTOMERS = {
                    "occupation": "Business Owner", "declared_income": 30000,
                    "kyc_status": "Completed", "risk_category": "Low",
                    "account_age_months": 36, "country": "Malaysia", "previous_alerts": 0},
+    "CUST-60002": {"customer_id": "CUST-60002", "name": "Bright Apps Sdn Bhd",
+                   "occupation": "Business Owner", "declared_income": 28000,
+                   "kyc_status": "Completed", "risk_category": "Low",
+                   "account_age_months": 30, "country": "Malaysia", "previous_alerts": 0},
 }
 
 
@@ -85,6 +89,12 @@ TRANSACTIONS = {
         _tx(20000, "2026-06-22T10:00:00", "CloudHost Services", "Malaysia", True, "out",
             purpose="Monthly cloud hosting subscription", source="Business operating revenue"),
     ],
+    # different customer paying the SAME vendor (cross-customer learning demo)
+    "CUST-60002": [
+        _tx(1200, "2026-05-04T10:00:00", "Grab Business", "Malaysia", False, "out"),
+        _tx(1600, "2026-05-19T10:00:00", "Office Rental", "Malaysia", False, "out"),
+        _tx(19000, "2026-06-23T10:00:00", "CloudHost Services", "Malaysia", True, "out"),
+    ],
 }
 
 WATCHLIST = [
@@ -104,8 +114,6 @@ def offline(monkeypatch):
                         lambda prompt, system=None, temperature=0.2: "{}")
     monkeypatch.setattr("app.agents.stage2_investigation.transaction_analysis.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.stage2_investigation.transaction_timeline.get_transactions",
-                        lambda cid: TRANSACTIONS.get(cid, []))
     monkeypatch.setattr("app.agents.stage2_investigation.graph_analysis.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
     monkeypatch.setattr("app.agents.stage2_investigation.graph_analysis.get_transaction_edges", lambda: [])
@@ -121,6 +129,9 @@ def offline(monkeypatch):
     monkeypatch.setattr("app.agents.stage2_investigation.case_memory.get_customer", lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.stage2_investigation.case_memory.get_customer_history",
                         lambda cid, exclude_case_id="": {"cases": [], "decisions": []})
+    # cross-customer learning: no learned patterns by default (tests opt in explicitly)
+    monkeypatch.setattr("app.agents.stage2_investigation.case_memory.get_learned_patterns",
+                        lambda: [])
     monkeypatch.setattr("app.agents.stage1_intake.data_quality.get_customer", lambda cid: CUSTOMERS.get(cid))
     monkeypatch.setattr("app.agents.stage1_intake.data_quality.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))

@@ -15,7 +15,7 @@ from app.agents.base import BaseAgent
 from app.core.state import stamp
 from app.core.evidence import EvidenceCollector
 from app.tools.db import get_customer
-from app.services.persistence import get_customer_history
+from app.services.persistence import get_customer_history, get_learned_patterns
 
 
 class CaseMemoryAgent(BaseAgent):
@@ -57,12 +57,18 @@ class CaseMemoryAgent(BaseAgent):
                                if d.get("corrected_typology")]
         feedback_tags = sorted({t for d in decisions for t in tags(d)})
 
+        # --- CROSS-CUSTOMER learning: has the team already cleared this recipient? ---
+        # Distilled false-positive feedback from ANY prior case (even a different
+        # customer) suppresses a similar alert here -- with the original case cited.
+        learned_suppression = self._match_learned_pattern(current_recipient, cid)
+
         # --- direction this memory should push the risk score ---
         # A confirmed escalation dominates; otherwise an explicit analyst false-positive
-        # override teaches the system to LOWER confidence on similar cases.
+        # override -- on this customer OR a learned cross-customer pattern -- teaches the
+        # system to LOWER risk on similar cases.
         if previous_escalations > 0:
             direction = "increase"
-        elif analyst_fp_overrides > 0:
+        elif analyst_fp_overrides > 0 or learned_suppression:
             direction = "reduce"
         elif same_recipient_seen_before:
             direction = "increase"
@@ -71,10 +77,16 @@ class CaseMemoryAgent(BaseAgent):
         else:
             direction = "neutral"
 
-        signal = self._signal(previous_cases_found, previous_escalations,
-                              previous_false_positives, same_recipient_seen_before,
-                              human_overrides, baseline_prior_alerts,
-                              analyst_fp_overrides, analyst_corrections)
+        if learned_suppression:
+            signal = (f"Recipient '{learned_suppression['recipient']}' was cleared as a "
+                      f"false positive by an analyst on case {learned_suppression['source_case_id']}"
+                      + (" (a different customer)" if learned_suppression["cross_customer"] else "")
+                      + ". Applying that learning to lower risk here.")
+        else:
+            signal = self._signal(previous_cases_found, previous_escalations,
+                                  previous_false_positives, same_recipient_seen_before,
+                                  human_overrides, baseline_prior_alerts,
+                                  analyst_fp_overrides, analyst_corrections)
 
         # DB facts are certain, so confidence is high
         confidence = 0.9
@@ -94,6 +106,13 @@ class CaseMemoryAgent(BaseAgent):
         if analyst_fp_overrides:
             ev_ids.append(coll.add("memory", cid, "analyst_false_positive_feedback", analyst_fp_overrides,
                                    "Analyst previously overrode similar AI findings as a false positive"))
+        if learned_suppression:
+            ev_ids.append(coll.add(
+                "analyst_note", learned_suppression["source_case_id"], "cleared_recipient",
+                learned_suppression["recipient"],
+                f"Analyst cleared '{learned_suppression['recipient']}' as a false positive "
+                f"on case {learned_suppression['source_case_id']}"
+                + (" (different customer)" if learned_suppression["cross_customer"] else "")))
 
         return {
             "memory_findings": {
@@ -106,6 +125,7 @@ class CaseMemoryAgent(BaseAgent):
                 "analyst_false_positive_feedback": analyst_fp_overrides,
                 "analyst_corrections": analyst_corrections,
                 "analyst_feedback_tags": feedback_tags,
+                "learned_suppression": learned_suppression,
                 "memory_risk_direction": direction,
                 "memory_risk_signal": signal,
                 "evidence_ids": ev_ids,
@@ -117,6 +137,24 @@ class CaseMemoryAgent(BaseAgent):
             "audit": stamp(f"{self.label} found {previous_cases_found} prior case(s), "
                            f"{previous_escalations} escalation(s) -> {direction}"),
         }
+
+    @staticmethod
+    def _match_learned_pattern(current_recipient: str, customer_id: str) -> dict | None:
+        """Recall the team's accumulated false-positive feedback: if this alert's
+        recipient was previously cleared by an analyst (on any customer), return the
+        matching pattern so the system suppresses the alert and cites that decision."""
+        if not current_recipient:
+            return None
+        for p in get_learned_patterns():
+            if (p.get("recipient") or "").strip().lower() == current_recipient:
+                return {
+                    "recipient": p.get("recipient"),
+                    "source_case_id": p.get("source_case_id"),
+                    "source_customer_id": p.get("source_customer_id"),
+                    "cross_customer": p.get("source_customer_id") != customer_id,
+                    "typology": p.get("typology"),
+                }
+        return None
 
     @staticmethod
     def _signal(cases, escalations, false_pos, same_recipient, overrides, baseline,

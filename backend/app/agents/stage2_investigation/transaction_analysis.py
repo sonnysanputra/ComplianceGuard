@@ -11,6 +11,7 @@ from app.agents.base import BaseAgent, CONFIDENCE_RUBRIC
 from app.core.state import stamp
 from app.core.evidence import EvidenceCollector
 from app.core.baseline import compute_baseline
+from app.core.timeline import build_timeline
 from app.rules.rule_engine import detect_transaction_typology
 from app.tools.db import get_transactions
 
@@ -96,6 +97,10 @@ class TransactionAnalysisAgent(BaseAgent):
                 coll.add("transaction", t.get("transaction_id"), "country", t.get("country"),
                          f"Transfer to {t.get('country')}")
 
+        # ---- annotated chronological timeline (folded in from the former
+        #      Transaction Timeline Agent -- one investigation step over one dataset) ----
+        timeline_findings, timeline_evidence = build_timeline(txns)
+
         return {
             "transaction_findings": {
                 "flags": det["flags"],          # reliable signal for risk scoring
@@ -108,13 +113,15 @@ class TransactionAnalysisAgent(BaseAgent):
                 "baseline": compute_baseline(txns),
                 "evidence_ids": evidence_ids,
             },
-            "evidence": coll.items,
+            "timeline_findings": timeline_findings,
+            "evidence": coll.items + timeline_evidence,
             "audit_rationales": [self.trace(
                 reasoning, confidence,
                 evidence=[f.get("flag") for f in llm_flags
                           if isinstance(f, dict) and f.get("flag")],
                 output={"typology": typology})],
-            "audit": stamp(f"{self.label} detected typology: {typology}"),
+            "audit": stamp(f"{self.label} detected typology: {typology}; "
+                           f"built a {len(timeline_findings['timeline'])}-event timeline"),
         }
 
 

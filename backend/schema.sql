@@ -28,7 +28,11 @@ insert into customers values
 ('CUST-20555', 'Sarah Lim',    'Business Owner',  45000, 'Completed', 'Low',    60, 'Malaysia', 0),
 ('CUST-30877', 'Daniel Tan',   'Student',         1500,  'Completed', 'High',   4,  'Malaysia', 2),
 ('CUST-40233', 'Priya Nair',   'Freelancer',      6000,  'Completed', 'Medium', 22, 'Malaysia', 0),
-('CUST-50001', 'Tech Solutions Sdn Bhd', 'Business Owner', 30000, 'Completed', 'Low', 36, 'Malaysia', 0);
+('CUST-50001', 'Tech Solutions Sdn Bhd', 'Business Owner', 30000, 'Completed', 'Low', 36, 'Malaysia', 0),
+-- A DIFFERENT business that also pays the same SaaS vendor (CloudHost Services).
+-- Used to demo cross-customer learning: once an analyst clears CUST-50001's
+-- CloudHost payment as benign, CUST-60002's similar payment is auto-recognised.
+('CUST-60002', 'Bright Apps Sdn Bhd', 'Business Owner', 28000, 'Completed', 'Low', 30, 'Malaysia', 0);
 
 -- --------------------------------------------------------------------
 -- Transactions  (direction: 'in' = incoming, 'out' = outgoing)
@@ -94,7 +98,12 @@ values
 -- ===== CUST-50001 : DOCUMENTED SUPPLIER PAYMENT (false positive -> auto-close) =====
 ('TXN-5000','CUST-50001',1500,'2026-05-02T10:00:00','AWS Cloud','Malaysia','payment',false,'out'),
 ('TXN-5001','CUST-50001',1800,'2026-05-18T10:00:00','Office Rental','Malaysia','payment',false,'out'),
-('TXN-5002','CUST-50001',20000,'2026-06-22T10:00:00','CloudHost Services','Malaysia','transfer',true,'out');
+('TXN-5002','CUST-50001',20000,'2026-06-22T10:00:00','CloudHost Services','Malaysia','transfer',true,'out'),
+
+-- ===== CUST-60002 : DOCUMENTED PAYMENT to the SAME vendor (cross-customer learning) =====
+('TXN-6000','CUST-60002',1200,'2026-05-04T10:00:00','Grab Business','Malaysia','payment',false,'out'),
+('TXN-6001','CUST-60002',1600,'2026-05-19T10:00:00','Office Rental','Malaysia','payment',false,'out'),
+('TXN-6002','CUST-60002',19000,'2026-06-23T10:00:00','CloudHost Services','Malaysia','transfer',true,'out');
 
 -- ---- economic background (purpose / source of funds / relationship) ----
 -- Documented supplier payment: clear purpose + source + invoice -> supports a
