@@ -42,7 +42,7 @@ from app.tools.rag import (
 )
 from app.services.persistence import (
     persist_case, persist_decision, list_cases, get_case_events, get_case_sar,
-    get_case_trace,
+    get_case_trace, list_recent_events,
 )
 from app.services.sar_render import sar_to_sections
 from app.core.case_status import derive_status, ALL_STATUSES, VALID_TRANSITIONS
@@ -338,47 +338,36 @@ def _report_md(snap: dict) -> str:
     return "\n".join(out)
 
 
-def _ascii(s) -> str:
-    """fpdf core fonts are Latin-1 only -- replace common unicode."""
-    return (str(s).replace("—", "-").replace("–", "-").replace("→", "->")
-            .replace("✓", "[OK]").replace("…", "...").replace("’", "'")
-            .encode("latin-1", "replace").decode("latin-1"))
+_REPORT_TITLE = "Suspicious Activity Report (DRAFT)"
+_REPORT_SUBTITLE = ("Draft investigation package - requires human analyst review "
+                    "before STR lodgement with FIED.")
+
+
+def _report_meta(snap: dict) -> list[tuple[str, str]]:
+    from datetime import datetime
+    tri = snap.get("triage") or {}
+    cid = (tri.get("entities") or {}).get("customer_id") or "-"
+    typ = tri.get("alert_type") or (snap.get("transaction_findings") or {}).get("typology") or "-"
+    return [
+        ("Case ID", str(snap.get("case_id") or "-")),
+        ("Customer", str(cid)),
+        ("Alert type", str(typ)),
+        ("Date generated", datetime.now().strftime("%Y-%m-%d %H:%M")),
+        ("Status", str(snap.get("status") or "-").replace("_", " ").title()),
+        ("Priority", f"{snap.get('priority') or '-'}  ({snap.get('sla_label', '')})".strip()),
+        ("Risk", f"{snap.get('risk_score', '-')}/100  -  {snap.get('risk_level', '-')}"),
+        ("Prepared by", "CompliGuard AI - multi-agent investigation"),
+    ]
 
 
 def _report_pdf(snap: dict) -> bytes:
-    from fpdf import FPDF
-    pdf = FPDF()
-    pdf.set_margins(15, 15, 15)
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-
-    def line(text, size=10, bold=False, gap=0):
-        pdf.set_font("Helvetica", "B" if bold else "", size)
-        pdf.set_x(pdf.l_margin)
-        if gap:
-            pdf.ln(gap)
-        pdf.multi_cell(pdf.epw, size * 0.55 + 1, _ascii(text) or " ", wrapmode="CHAR")
-
-    line(f"Suspicious Activity Report - {snap.get('case_id')}", size=16, bold=True)
-    for title, lines in _report_sections(snap):
-        line(title, size=13, bold=True, gap=3)
-        for l in lines:
-            line(l, size=10)
-    return bytes(pdf.output())
+    from app.services.report_render import render_pdf
+    return render_pdf(_REPORT_TITLE, _REPORT_SUBTITLE, _report_meta(snap), _report_sections(snap))
 
 
 def _report_docx(snap: dict) -> bytes:
-    from io import BytesIO
-    from docx import Document
-    doc = Document()
-    doc.add_heading(f"Suspicious Activity Report - {snap.get('case_id')}", level=0)
-    for title, lines in _report_sections(snap):
-        doc.add_heading(title, level=1)
-        for l in lines:
-            doc.add_paragraph(str(l))
-    buf = BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    from app.services.report_render import render_docx
+    return render_docx(_REPORT_TITLE, _REPORT_SUBTITLE, _report_meta(snap), _report_sections(snap))
 
 
 def _build_report(snap: dict) -> str:
@@ -417,6 +406,64 @@ def ready():
 @app.get("/scenarios")
 def scenarios():
     return SCENARIOS
+
+
+@app.get("/config")
+def config():
+    """System configuration for the Settings page: models, versions, thresholds."""
+    from app.core.config import CHAT_MODEL, EMBED_MODEL
+    from app.tools.rag import RERANKER_MODEL, load_policies
+    from app.core.governance import ruleset_version, policy_version
+    rules = get_rules()
+    try:
+        pol_count = len(load_policies())
+    except Exception:
+        pol_count = None
+    try:
+        cr_count = len(get_country_risk() or {})
+    except Exception:
+        cr_count = None
+    return {
+        "chat_model": CHAT_MODEL,
+        "embed_model": EMBED_MODEL,
+        "reranker": RERANKER_MODEL.split("/")[-1],
+        "ruleset_version": ruleset_version(),
+        "policy_version": policy_version(),
+        "escalation_threshold": rules.get("scoring", {}).get("escalation_threshold"),
+        "policy_count": pol_count,
+        "country_risk_count": cr_count,
+    }
+
+
+@app.get("/audit-events")
+def audit_events(limit: int = 120):
+    """Global audit log: recent agent + decision events across all cases."""
+    from app.core.governance import model_name, ruleset_version, policy_version
+    return {
+        "events": list_recent_events(limit),
+        "governance": {"model": model_name(), "ruleset": ruleset_version(),
+                       "policy": policy_version()},
+    }
+
+
+@app.get("/customers")
+def customers():
+    """List customers (id + name) that have data on file -- for the New
+    Investigation form, so an alert can be raised against a real customer."""
+    try:
+        from app.tools.db import client
+        res = (client().table("customers")
+               .select("customer_id, name, occupation, risk_category").execute())
+        return res.data or []
+    except Exception:
+        # fall back to the customer IDs referenced by the demo scenarios
+        seen, out = set(), []
+        for s in SCENARIOS:
+            cid = s.get("customer_id")
+            if cid and cid not in seen:
+                seen.add(cid)
+                out.append({"customer_id": cid, "name": cid})
+        return out
 
 
 @app.get("/policies")
@@ -645,9 +692,9 @@ def rerun_agent(case_id: str, agent_name: str):
     return _snapshot(case_id)
 
 
-@app.post("/case/{case_id}/export")
+@app.api_route("/case/{case_id}/export", methods=["GET", "POST"])
 def export_case(case_id: str):
-    """Download the case as a Markdown report."""
+    """Download the case as a Markdown report (GET so it works as a download link)."""
     report = _build_report(_snapshot(case_id))
     return Response(
         content=report, media_type="text/markdown",
@@ -655,11 +702,11 @@ def export_case(case_id: str):
     )
 
 
-@app.post("/case/{case_id}/export-sar")
-def export_sar(case_id: str, format: Literal["pdf", "markdown", "docx"] = "pdf"):
-    """Download the full SAR report as PDF, Markdown, or DOCX. Includes case info,
-    risk score + factors, agent findings, policy references, the SAR draft, the
-    human decision, and the audit timeline."""
+@app.api_route("/case/{case_id}/export-sar", methods=["GET", "POST"])
+def export_sar(case_id: str, format: Literal["pdf", "markdown", "docx"] = "pdf",
+               inline: bool = False):
+    """Download (or, with inline=true, preview) the full SAR report as a branded
+    PDF / DOCX / Markdown document."""
     snap = _snapshot(case_id)
     builders = {
         "pdf":      (_report_pdf,  "application/pdf", "pdf"),
@@ -668,7 +715,8 @@ def export_sar(case_id: str, format: Literal["pdf", "markdown", "docx"] = "pdf")
         "markdown": (lambda s: _report_md(s).encode(), "text/markdown", "md"),
     }
     build, media, ext = builders[format]
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=build(snap), media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{case_id}_SAR.{ext}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{case_id}_SAR.{ext}"'},
     )

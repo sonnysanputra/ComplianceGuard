@@ -137,6 +137,16 @@ export interface CaseSnapshot {
   a2a_messages?: { from: string; status?: string; confidence?: number; duration_ms?: number }[];
 }
 
+export interface AuditEvent {
+  id?: number;
+  case_id?: string;
+  agent_name?: string;
+  event_type?: string;
+  message?: string;
+  confidence?: number;
+  created_at?: string;
+}
+
 export interface StreamProgress {
   agent: string;
   label: string;
@@ -164,10 +174,17 @@ export const api = {
   scenarios: () => get<Scenario[]>("/scenarios"),
   cases: () => get<CaseSummary[]>("/cases"),
   case: (id: string) => get<CaseSnapshot>(`/case/${encodeURIComponent(id)}`),
+  config: () => get<Record<string, unknown>>("/config"),
+  rules: () => get<Record<string, unknown>>("/rules"),
+  auditEvents: (limit = 120) => get<{ events: AuditEvent[]; governance: Record<string, string> }>(`/audit-events?limit=${limit}`),
+  reloadRules: () => post<Record<string, unknown>>("/rules/reload", {}),
+  reindexPolicies: () => post<Record<string, unknown>>("/policies/reindex", {}),
   decide: (id: string, body: Record<string, unknown>) =>
     post<CaseSnapshot>(`/case/${encodeURIComponent(id)}/decision`, body),
   sarExportUrl: (id: string, format: "pdf" | "docx" | "markdown") =>
     `${API_BASE}/case/${encodeURIComponent(id)}/export-sar?format=${format}`,
+  sarPreviewUrl: (id: string) =>
+    `${API_BASE}/case/${encodeURIComponent(id)}/export-sar?format=pdf&inline=true`,
 };
 
 export function toAlert(s: Scenario): Scenario {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, ScanSearch, BookOpen, BarChart3,
-  ScrollText, Settings, Bell, Sun, ShieldCheck, ChevronLeft, Plus,
+  ScrollText, Settings, Bell, Sun, ChevronLeft, Plus,
 } from "lucide-react";
 
 const NAV = [
@@ -24,15 +24,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <div className="flex items-center gap-2.5 px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white shadow-card">
-            <ShieldCheck size={20} />
-          </div>
-          <div className="leading-tight">
-            <div className="text-[15px] font-extrabold tracking-tight">ComplianceGuard</div>
-            <div className="text-[11px] text-ink3">AML Investigation Suite</div>
-          </div>
-        </div>
+        <Link href="/" className="block px-5 pb-2 pt-5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="ComplianceGuard" className="w-[172px]" />
+          <div className="mt-1 pl-1 text-[11px] text-ink3">AML Investigation Suite</div>
+        </Link>
 
         <nav className="mt-2 flex-1 space-y-1 px-3">
           {NAV.map((n) => {
@@ -78,7 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <Link
-              href="/"
+              href="/new"
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-card hover:bg-primary-deep"
             >
               <Plus size={16} /> New Investigation

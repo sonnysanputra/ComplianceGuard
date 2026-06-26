@@ -5,7 +5,7 @@ import Link from "next/link";
 import { api, type CaseSummary, type Scenario } from "@/lib/api";
 import { Card, CardLabel, Pill, Spinner, statusTone, prettyStatus } from "@/components/ui";
 import RunDialog from "@/components/RunDialog";
-import { Play, RefreshCw, TrendingDown, FolderCheck, FileText, Layers } from "lucide-react";
+import { Play, RefreshCw, TrendingDown, FolderCheck, FileText, Layers, Plus } from "lucide-react";
 
 export default function Dashboard() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -33,9 +33,14 @@ export default function Dashboard() {
           <h1 className="text-2xl font-extrabold tracking-tight">Dashboard</h1>
           <p className="text-sm text-ink2">AML alert triage & investigation overview</p>
         </div>
-        <button onClick={load} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink2 hover:bg-soft2">
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={load} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink2 hover:bg-soft2">
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <Link href="/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-primary-deep">
+            <Plus size={15} /> New Investigation
+          </Link>
+        </div>
       </div>
 
       {err && <div className="rounded-xl border border-red-border bg-red-bg px-4 py-3 text-sm text-red">{err}</div>}

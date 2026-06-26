@@ -56,8 +56,9 @@ export default function CasePage() {
           <p className="mt-1 text-sm text-ink2">{String(tri.alert_reason || tri.reason || snap.transaction_findings?.["summary"] || "")}</p>
         </div>
         {snap.sar_draft && (
-          <a href={api.sarExportUrl(snap.case_id, "pdf")} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink hover:bg-soft2">
-            <FileText size={16} /> SAR Draft
+          <a href={api.sarExportUrl(snap.case_id, "pdf")} target="_blank" rel="noopener" download
+             className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink hover:bg-soft2">
+            <FileText size={16} /> Download SAR (PDF)
           </a>
         )}
       </div>
@@ -258,18 +259,28 @@ export default function CasePage() {
           </div>
         </Card>
 
-        {/* SAR */}
+        {/* SAR — embedded PDF preview */}
         {snap.sar_draft && (
           <Card className="lg:col-span-2">
             <div className="flex items-center justify-between">
-              <CardLabel>SAR Draft (regulator-style)</CardLabel>
+              <CardLabel>Suspicious Activity Report (PDF preview)</CardLabel>
               <div className="flex gap-2">
                 {(["pdf", "docx", "markdown"] as const).map((f) => (
-                  <a key={f} href={api.sarExportUrl(snap.case_id, f)} className="rounded-md border border-line px-2 py-0.5 text-[11px] text-ink2 hover:bg-soft2">{f}</a>
+                  <a key={f} href={api.sarExportUrl(snap.case_id, f)} target="_blank" rel="noopener" download
+                     className="rounded-md border border-line px-2.5 py-1 text-[11px] font-semibold text-ink2 hover:bg-soft2 hover:text-primary-press">
+                    ↓ {f.toUpperCase()}
+                  </a>
                 ))}
               </div>
             </div>
-            <pre className="mono mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-xl bg-soft p-3 text-xs text-ink2">{snap.sar_draft}</pre>
+            <iframe
+              src={api.sarPreviewUrl(snap.case_id)}
+              title="SAR PDF preview"
+              className="mt-3 h-[640px] w-full rounded-xl border border-line bg-soft"
+            />
+            <p className="mt-2 text-[11px] text-ink3">
+              Live rendered PDF — use ↓ PDF / DOCX above to download the report.
+            </p>
           </Card>
         )}
       </div>

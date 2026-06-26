@@ -260,6 +260,17 @@ def list_cases(limit: int = 50) -> list[dict]:
         return []
 
 
+def list_recent_events(limit: int = 100) -> list[dict]:
+    """Recent agent/decision events across all cases (the global audit log)."""
+    try:
+        res = (client().table("case_events").select("*")
+               .order("id", desc=True).limit(limit).execute())
+        return res.data or []
+    except Exception as exc:
+        logger.warning(f"[persistence] could not list events: {exc}")
+        return []
+
+
 def get_case_events(case_id: str) -> list[dict]:
     try:
         res = (client().table("case_events").select("*")
