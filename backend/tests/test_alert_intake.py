@@ -1,4 +1,4 @@
-from app.agents.alert_intake import AlertIntakeAgent, alert_intake
+from app.agents.stage1_intake.alert_intake import AlertIntakeAgent, alert_intake
 
 _classify = AlertIntakeAgent._classify_type
 

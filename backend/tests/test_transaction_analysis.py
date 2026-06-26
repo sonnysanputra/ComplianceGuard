@@ -3,7 +3,7 @@ Golden test cases -- verify each AML typology is detected correctly.
 These pin the core behaviour: the right pattern is recognised for each scenario.
 """
 
-from app.agents.transaction_analysis import transaction_analysis
+from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
 
 
 def _alert(cid, recipient="", country="Malaysia", n=0, amount=0):

@@ -1,4 +1,4 @@
-from app.agents.kyc_profile import kyc_profile
+from app.agents.stage2_investigation.kyc_profile import kyc_profile
 
 
 def test_student_moving_large_sums_triggers_edd():

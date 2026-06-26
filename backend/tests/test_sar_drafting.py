@@ -3,7 +3,7 @@ The SAR draft is a structured 12-section regulator-style package, framed as a
 DRAFT (human review required) -- not an automatic STR submission.
 """
 
-from app.agents.sar_drafting import sar_drafting
+from app.agents.stage5_reporting.sar_drafting import sar_drafting
 from app.services.sar_render import sar_to_markdown, sar_to_sections
 
 EXPECTED_SECTIONS = [

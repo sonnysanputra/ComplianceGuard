@@ -26,22 +26,22 @@ MAX_MORE_INFO_ROUNDS = 2   # cap re-investigations so the loop can't run forever
 
 from app.core.state import CaseState
 from app.rules.rule_engine import get_rules
-from app.agents.alert_intake import alert_intake
-from app.agents.data_quality import data_quality
-from app.agents.transaction_analysis import transaction_analysis
-from app.agents.transaction_timeline import transaction_timeline
-from app.agents.graph_analysis import graph_analysis
-from app.agents.kyc_profile import kyc_profile
-from app.agents.watchlist_screening import watchlist_screening
-from app.agents.adverse_media_screening import adverse_media_screening
-from app.agents.policy_rag import policy_rag
-from app.agents.case_memory import case_memory
-from app.agents.risk_scoring import risk_scoring
-from app.agents.false_positive_review import false_positive_review
-from app.agents.auto_close import auto_close
-from app.agents.sar_drafting import sar_drafting
-from app.agents.compliance_review import compliance_review
-from app.agents.human_approval import human_approval
+from app.agents.stage1_intake.alert_intake import alert_intake
+from app.agents.stage1_intake.data_quality import data_quality
+from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
+from app.agents.stage2_investigation.transaction_timeline import transaction_timeline
+from app.agents.stage2_investigation.graph_analysis import graph_analysis
+from app.agents.stage2_investigation.kyc_profile import kyc_profile
+from app.agents.stage2_investigation.watchlist_screening import watchlist_screening
+from app.agents.stage2_investigation.adverse_media_screening import adverse_media_screening
+from app.agents.stage2_investigation.policy_rag import policy_rag
+from app.agents.stage2_investigation.case_memory import case_memory
+from app.agents.stage3_scoring.risk_scoring import risk_scoring
+from app.agents.stage4_disposition.false_positive_review import false_positive_review
+from app.agents.stage4_disposition.auto_close import auto_close
+from app.agents.stage5_reporting.sar_drafting import sar_drafting
+from app.agents.stage5_reporting.compliance_review import compliance_review
+from app.agents.stage6_approval.human_approval import human_approval
 
 
 # below this data-quality score we cannot score reliably -> stop the case

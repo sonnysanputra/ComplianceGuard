@@ -15,7 +15,7 @@ from _common import load_cases, build_state, route_label, pct
 
 def _fp_cleared(case: dict, state: dict) -> bool:
     """Run the false-positive review for a case and return True if it auto-clears."""
-    import app.agents.false_positive_review as fp
+    import app.agents.stage4_disposition.false_positive_review as fp
     fp.get_customer = lambda cid: case["customer"]
     fp.get_transactions = lambda cid: case["transactions"]
     out = fp.false_positive_review.run(state)["fp_review"]

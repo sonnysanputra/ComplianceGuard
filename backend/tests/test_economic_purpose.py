@@ -5,7 +5,7 @@ Economic purpose / source-of-funds:
 """
 
 from app.rules.rule_engine import evaluate_aml_rules, purpose_is_clear
-from app.agents.false_positive_review import false_positive_review
+from app.agents.stage4_disposition.false_positive_review import false_positive_review
 
 CUST = {"customer_id": "C1", "declared_income": 8000, "previous_alerts": 0}
 
@@ -41,7 +41,7 @@ def test_clear_purpose_does_not_fire_unclear_rule():
 
 
 def test_fp_review_uses_economic_purpose(monkeypatch):
-    import app.agents.false_positive_review as fp
+    import app.agents.stage4_disposition.false_positive_review as fp
     documented = [_txn("T1", "Malaysia", purpose="Monthly cloud hosting",
                        source="Business revenue", doc="https://x/inv.pdf")]
     monkeypatch.setattr(fp, "get_customer", lambda cid: CUST)

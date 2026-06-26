@@ -3,8 +3,8 @@ Auto-close emits a professional clearance note (reason + evidence + recommended
 action) for both the cleared-false-positive and the clean-low-risk paths.
 """
 
-import app.agents.auto_close as ac
-from app.agents.auto_close import auto_close
+import app.agents.stage4_disposition.auto_close as ac
+from app.agents.stage4_disposition.auto_close import auto_close
 
 
 def test_cleared_false_positive_note(monkeypatch):

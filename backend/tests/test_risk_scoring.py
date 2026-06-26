@@ -3,7 +3,7 @@ Risk scoring now delegates deterministic detection to the AML rule engine, so
 these tests drive it with the real sample customers + transactions.
 """
 
-from app.agents.risk_scoring import risk_scoring
+from app.agents.stage3_scoring.risk_scoring import risk_scoring
 
 
 def _state(customer_id, is_match=False, high_risk_country=False, memory=None, errors=None):

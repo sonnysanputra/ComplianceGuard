@@ -1,4 +1,4 @@
-from app.agents.watchlist_screening import watchlist_screening
+from app.agents.stage2_investigation.watchlist_screening import watchlist_screening
 
 
 def test_recipient_screening_flags_blacklist_near_match():

@@ -4,9 +4,9 @@ evidence by ID -- reusing the IDs upstream agents already minted (traceability).
 """
 
 from app.core.evidence import EvidenceItem, EvidenceCollector, index_evidence
-from app.agents.transaction_analysis import transaction_analysis
-from app.agents.kyc_profile import kyc_profile
-from app.agents.risk_scoring import risk_scoring
+from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
+from app.agents.stage2_investigation.kyc_profile import kyc_profile
+from app.agents.stage3_scoring.risk_scoring import risk_scoring
 
 
 def test_collector_mints_readable_ids_and_dedupes():

@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* brand */
+  --color-primary: #f97316;
+  --color-primary-deep: #ea580c;
+  --color-primary-press: #c2410c;
+  --color-primary-soft: #fff7ed;
+  --color-primary-border: #fed7aa;
+
+  /* surfaces + text */
+  --color-canvas: #fafafa;
+  --color-surface: #ffffff;
+  --color-soft: #f8fafc;
+  --color-soft2: #f1f5f9;
+  --color-line: #e5e7eb;
+  --color-line2: #d1d5db;
+  --color-ink: #111827;
+  --color-ink2: #6b7280;
+  --color-ink3: #9ca3af;
+
+  /* status */
+  --color-green: #16a34a;
+  --color-green-bg: #ecfdf3;
+  --color-green-border: #bbf7d0;
+  --color-red: #dc2626;
+  --color-red-bg: #fef2f2;
+  --color-red-border: #fecaca;
+  --color-amber: #b45309;
+  --color-amber-bg: #fffbeb;
+  --color-amber-border: #fde68a;
+  --color-blue: #2563eb;
+  --color-blue-bg: #eff6ff;
+  --color-blue-border: #bfdbfe;
+  --color-violet: #7c3aed;
+  --color-violet-bg: #f5f3ff;
+  --color-violet-border: #ddd6fe;
+
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-ibm), ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+
+.shadow-card {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+.shadow-cardlg {
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.1), 0 4px 8px rgba(16, 24, 40, 0.05);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}

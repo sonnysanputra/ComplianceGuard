@@ -102,32 +102,34 @@ def offline(monkeypatch):
     """Replace LLM + DB calls so tests run offline and deterministically."""
     monkeypatch.setattr("app.agents.base.chat",
                         lambda prompt, system=None, temperature=0.2: "{}")
-    monkeypatch.setattr("app.agents.transaction_analysis.get_transactions",
+    monkeypatch.setattr("app.agents.stage2_investigation.transaction_analysis.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.transaction_timeline.get_transactions",
+    monkeypatch.setattr("app.agents.stage2_investigation.transaction_timeline.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.graph_analysis.get_transactions",
+    monkeypatch.setattr("app.agents.stage2_investigation.graph_analysis.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.graph_analysis.get_transaction_edges", lambda: [])
-    monkeypatch.setattr("app.agents.kyc_profile.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.risk_scoring.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.risk_scoring.get_transactions",
+    monkeypatch.setattr("app.agents.stage2_investigation.graph_analysis.get_transaction_edges", lambda: [])
+    monkeypatch.setattr("app.agents.stage2_investigation.kyc_profile.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage3_scoring.risk_scoring.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage3_scoring.risk_scoring.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.watchlist_screening.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.watchlist_screening.get_watchlist", lambda: WATCHLIST)
-    monkeypatch.setattr("app.agents.adverse_media_screening.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.case_memory.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.case_memory.get_customer_history",
+    monkeypatch.setattr("app.agents.stage2_investigation.watchlist_screening.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage2_investigation.watchlist_screening.get_watchlist", lambda: WATCHLIST)
+    monkeypatch.setattr("app.agents.stage2_investigation.adverse_media_screening.get_customer", lambda cid: CUSTOMERS.get(cid))
+    # keep adverse-media offline + deterministic: no live web call, use curated list
+    monkeypatch.setattr("app.tools.adverse_media._fetch_news", lambda *a, **k: [])
+    monkeypatch.setattr("app.agents.stage2_investigation.case_memory.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage2_investigation.case_memory.get_customer_history",
                         lambda cid, exclude_case_id="": {"cases": [], "decisions": []})
-    monkeypatch.setattr("app.agents.data_quality.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.data_quality.get_transactions",
+    monkeypatch.setattr("app.agents.stage1_intake.data_quality.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage1_intake.data_quality.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.false_positive_review.get_customer",
+    monkeypatch.setattr("app.agents.stage4_disposition.false_positive_review.get_customer",
                         lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.false_positive_review.get_transactions",
+    monkeypatch.setattr("app.agents.stage4_disposition.false_positive_review.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.sar_drafting.get_customer", lambda cid: CUSTOMERS.get(cid))
-    monkeypatch.setattr("app.agents.sar_drafting.get_transactions",
+    monkeypatch.setattr("app.agents.stage5_reporting.sar_drafting.get_customer", lambda cid: CUSTOMERS.get(cid))
+    monkeypatch.setattr("app.agents.stage5_reporting.sar_drafting.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))
-    monkeypatch.setattr("app.agents.auto_close.get_transactions",
+    monkeypatch.setattr("app.agents.stage4_disposition.auto_close.get_transactions",
                         lambda cid: TRANSACTIONS.get(cid, []))

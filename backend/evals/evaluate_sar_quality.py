@@ -11,7 +11,7 @@ Run:  python evals/evaluate_sar_quality.py
 """
 
 from _common import load_cases, build_state, pct
-from app.agents.sar_drafting import SARDraftingAgent
+from app.agents.stage5_reporting.sar_drafting import SARDraftingAgent
 from app.services.sar_render import sar_to_sections
 
 REQUIRED = [

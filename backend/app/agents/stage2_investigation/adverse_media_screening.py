@@ -49,6 +49,8 @@ class AdverseMediaScreeningAgent(BaseAgent):
         verdict = "NEGATIVE_NEWS_FOUND" if negative else "NO_ADVERSE_MEDIA"
         required_action = ("Manual review required -- adverse media found."
                            if negative else "No adverse media; no action required.")
+        # where the hits came from (live web vs curated fallback)
+        lookup_source = next((s["source"] for s in screenings.values() if s.get("hits")), "none")
 
         if negative:
             titles = "; ".join(h["title"] for h in all_hits[:2])
@@ -69,6 +71,7 @@ class AdverseMediaScreeningAgent(BaseAgent):
                 "highest_risk_level": highest,
                 "hit_count": len(all_hits),
                 "all_hits": all_hits,
+                "lookup_source": lookup_source,
                 "required_action": required_action,
                 "evidence_ids": ev_ids,
             },

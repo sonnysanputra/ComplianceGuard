@@ -3,8 +3,8 @@ Analyst feedback learning: when a human previously overrode the AI as a false
 positive, the Case Memory Agent lowers confidence on similar future cases.
 """
 
-import app.agents.case_memory as cm
-from app.agents.case_memory import case_memory
+import app.agents.stage2_investigation.case_memory as cm
+from app.agents.stage2_investigation.case_memory import case_memory
 
 
 def _run(monkeypatch, prior_cases, decisions, cust=None):

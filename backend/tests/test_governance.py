@@ -4,8 +4,8 @@ policy version produced it, so any decision can be reproduced and audited.
 """
 
 from app.core.governance import governance, model_name, ruleset_version
-from app.agents.risk_scoring import risk_scoring
-from app.agents.watchlist_screening import watchlist_screening
+from app.agents.stage3_scoring.risk_scoring import risk_scoring
+from app.agents.stage2_investigation.watchlist_screening import watchlist_screening
 
 
 def test_governance_metadata_shape():

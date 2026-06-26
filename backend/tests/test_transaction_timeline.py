@@ -3,7 +3,7 @@ The transaction timeline is chronological and annotates each event with a
 plain-language risk note an analyst can read top-to-bottom.
 """
 
-from app.agents.transaction_timeline import transaction_timeline
+from app.agents.stage2_investigation.transaction_timeline import transaction_timeline
 
 
 def _run(cid):

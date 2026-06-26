@@ -49,16 +49,16 @@ from app.core.case_status import derive_status, ALL_STATUSES, VALID_TRANSITIONS
 from app.core.priority import sla_due_at, sla_label
 
 # agent instances that are safe to re-run standalone (no human interrupt)
-from app.agents.alert_intake import alert_intake
-from app.agents.data_quality import data_quality
-from app.agents.transaction_analysis import transaction_analysis
-from app.agents.kyc_profile import kyc_profile
-from app.agents.watchlist_screening import watchlist_screening
-from app.agents.graph_analysis import graph_analysis
-from app.agents.adverse_media_screening import adverse_media_screening
-from app.agents.policy_rag import policy_rag
-from app.agents.case_memory import case_memory
-from app.agents.risk_scoring import risk_scoring
+from app.agents.stage1_intake.alert_intake import alert_intake
+from app.agents.stage1_intake.data_quality import data_quality
+from app.agents.stage2_investigation.transaction_analysis import transaction_analysis
+from app.agents.stage2_investigation.kyc_profile import kyc_profile
+from app.agents.stage2_investigation.watchlist_screening import watchlist_screening
+from app.agents.stage2_investigation.graph_analysis import graph_analysis
+from app.agents.stage2_investigation.adverse_media_screening import adverse_media_screening
+from app.agents.stage2_investigation.policy_rag import policy_rag
+from app.agents.stage2_investigation.case_memory import case_memory
+from app.agents.stage3_scoring.risk_scoring import risk_scoring
 
 AGENTS = {a.name: a for a in [
     alert_intake, data_quality, transaction_analysis, graph_analysis, kyc_profile,

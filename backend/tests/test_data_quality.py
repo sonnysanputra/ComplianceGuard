@@ -3,8 +3,8 @@ Data quality grades the case (GOOD / PARTIAL / POOR / CRITICAL_MISSING) rather
 than a binary complete/incomplete, and decides whether it can continue.
 """
 
-import app.agents.data_quality as dqmod
-from app.agents.data_quality import data_quality
+import app.agents.stage1_intake.data_quality as dqmod
+from app.agents.stage1_intake.data_quality import data_quality
 
 FULL_CUST = {"customer_id": "C1", "occupation": "Engineer", "declared_income": 8000,
              "kyc_status": "Completed"}

@@ -3,7 +3,7 @@ The false-positive review either auto-closes a clearly benign case, or refers it
 to a human -- and a sanctions/blacklist name match is NEVER auto-cleared.
 """
 
-from app.agents.false_positive_review import false_positive_review
+from app.agents.stage4_disposition.false_positive_review import false_positive_review
 
 
 def _state(alert, watchlist=None, kyc=None):

@@ -4,7 +4,7 @@ recorded as structured evidence, and raises the risk score.
 """
 
 from app.tools.adverse_media import search_adverse_media
-from app.agents.adverse_media_screening import adverse_media_screening
+from app.agents.stage2_investigation.adverse_media_screening import adverse_media_screening
 from app.rules.rule_engine import evaluate_aml_rules
 
 CUST = {"customer_id": "C1", "name": "Acme Trading", "declared_income": 8000,
@@ -21,7 +21,7 @@ def test_tool_finds_and_misses():
 
 
 def test_agent_screens_both_parties(monkeypatch):
-    import app.agents.adverse_media_screening as am
+    import app.agents.stage2_investigation.adverse_media_screening as am
     monkeypatch.setattr(am, "get_customer", lambda cid: CUST)
     state = {"alert": {"customer_id": "C1", "recipient": "Global Trade Ltd"}}
     out = adverse_media_screening.run(state)
@@ -34,7 +34,7 @@ def test_agent_screens_both_parties(monkeypatch):
 
 
 def test_no_news_is_clean(monkeypatch):
-    import app.agents.adverse_media_screening as am
+    import app.agents.stage2_investigation.adverse_media_screening as am
     monkeypatch.setattr(am, "get_customer", lambda cid: CUST)
     state = {"alert": {"customer_id": "C1", "recipient": "CloudHost Services"}}
     f = adverse_media_screening.run(state)["adverse_media_findings"]
