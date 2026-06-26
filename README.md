@@ -1,4 +1,4 @@
-# CompliGuard AI
+# ComplianceGuard
 
 **A multi-agent AML compliance investigation system.** It turns a raw suspicious-activity alert into a fully investigated, explainable, **traceable** case — with a drafted Suspicious Activity Report (SAR) — in about a minute, while keeping a human analyst in control of the final decision.
 
