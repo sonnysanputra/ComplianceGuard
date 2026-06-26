@@ -207,6 +207,18 @@ export function toAlert(s: Scenario): Scenario {
   return alert;
 }
 
+// Upload a document; the backend LLM extracts the alert fields.
+export async function extractAlertFromFile(file: File): Promise<Scenario & { _source_filename?: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${API_BASE}/alerts/extract`, { method: "POST", body: fd });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({}));
+    throw new Error(detail.detail || `${r.status} ${r.statusText}`);
+  }
+  return r.json();
+}
+
 export async function streamInvestigation(
   alert: Scenario,
   handlers: {

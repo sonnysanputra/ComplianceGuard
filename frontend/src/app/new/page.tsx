@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE, streamInvestigation, type Scenario, type StreamProgress } from "@/lib/api";
+import { API_BASE, streamInvestigation, extractAlertFromFile, type Scenario, type StreamProgress } from "@/lib/api";
 import { Card, CardLabel, Spinner, pct } from "@/components/ui";
-import { Play, Check, X } from "lucide-react";
+import { Play, Check, X, Upload, FileText } from "lucide-react";
 
 interface Customer { customer_id: string; name?: string; occupation?: string; risk_category?: string }
 
@@ -25,7 +25,33 @@ export default function NewInvestigation() {
   const [events, setEvents] = useState<StreamProgress[]>([]);
   const [done, setDone] = useState<{ case_id: string; status?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState<string | null>(null);
+  const [extractErr, setExtractErr] = useState<string | null>(null);
   const startedRef = useRef(false);
+
+  async function onUpload(file: File | undefined) {
+    if (!file) return;
+    setExtracting(true); setExtractErr(null); setExtracted(null);
+    try {
+      const a = await extractAlertFromFile(file);
+      setForm((f) => ({
+        ...f,
+        customer_id: a.customer_id || f.customer_id,
+        reason: a.reason || f.reason,
+        recipient: a.recipient || f.recipient,
+        country: a.country || f.country,
+        total_amount: a.total_amount || f.total_amount,
+        num_transactions: a.num_transactions || f.num_transactions,
+        supporting_document: a.supporting_document || file.name,
+      }));
+      setExtracted(file.name);
+    } catch (e) {
+      setExtractErr(e instanceof Error ? e.message : "Could not read that document.");
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/customers`, { cache: "no-store" })
@@ -64,19 +90,47 @@ export default function NewInvestigation() {
 
       {!running ? (
         <Card>
+          {/* Upload an alert document -> auto-fill */}
+          <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary-border bg-primary-soft px-4 py-6 text-center transition hover:bg-primary-soft/70">
+            <input type="file" accept=".pdf,.docx,.txt,.md,.csv,.eml,.json" className="hidden"
+                   onChange={(e) => onUpload(e.target.files?.[0])} disabled={extracting} />
+            {extracting ? (
+              <Spinner label="reading document & extracting fields…" />
+            ) : (
+              <>
+                <Upload size={22} className="text-primary" />
+                <span className="mt-1.5 text-sm font-semibold text-primary-press">Upload an alert document</span>
+                <span className="text-xs text-ink3">PDF, DOCX, TXT — fields are auto-extracted so you don&apos;t type them</span>
+              </>
+            )}
+          </label>
+          {extracted && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-bg px-3 py-2 text-xs text-green">
+              <FileText size={14} /> Auto-filled from <b>{extracted}</b> — review and edit below, then run.
+            </div>
+          )}
+          {extractErr && (
+            <div className="mt-2 rounded-lg bg-red-bg px-3 py-2 text-xs text-red">{extractErr}</div>
+          )}
+
+          <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wider text-ink3">
+            <span className="h-px flex-1 bg-line" /> or enter manually <span className="h-px flex-1 bg-line" />
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Alert ID">
               <input value={form.id} onChange={(e) => set("id", e.target.value)} className={inp} />
             </Field>
             <Field label="Customer">
-              <select value={form.customer_id} onChange={(e) => set("customer_id", e.target.value)} className={inp}>
-                <option value="" disabled>Select a customer…</option>
+              <input list="cg-customers" value={form.customer_id} onChange={(e) => set("customer_id", e.target.value)}
+                     placeholder="e.g. CUST-10291" className={inp} />
+              <datalist id="cg-customers">
                 {customers.map((c) => (
                   <option key={c.customer_id} value={c.customer_id}>
-                    {c.customer_id}{c.name && c.name !== c.customer_id ? ` — ${c.name}` : ""}{c.risk_category ? ` (${c.risk_category})` : ""}
+                    {c.name && c.name !== c.customer_id ? c.name : ""}{c.risk_category ? ` (${c.risk_category})` : ""}
                   </option>
                 ))}
-              </select>
+              </datalist>
             </Field>
             <Field label="Alert reason" full>
               <input value={form.reason} onChange={(e) => set("reason", e.target.value)} placeholder="e.g. Multiple sub-threshold transfers to a new overseas recipient" className={inp} />

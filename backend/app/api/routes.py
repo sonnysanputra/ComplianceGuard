@@ -407,6 +407,81 @@ def scenarios():
     return SCENARIOS
 
 
+_EXTRACT_SYSTEM = """You extract structured AML alert fields from a document (an alert \
+notice, transaction report, email, or compliance memo). Use ONLY information explicitly \
+present in the document. If a field is not stated, return null for it -- NEVER guess or \
+invent values, names, or amounts."""
+
+_EXTRACT_PROMPT = """Extract these fields from the document below.
+
+- customer_id        : the customer or account identifier (e.g. CUST-10291), or null
+- reason             : a one-sentence description of why the activity is suspicious, in the document's own terms
+- recipient          : the counterparty / beneficiary name, or null
+- country            : the destination or counterparty country, or null
+- total_amount       : the total amount as a plain number (no currency symbol or commas), or null
+- num_transactions   : the number of transactions mentioned, or null
+- supporting_document: an invoice or reference number if present, or null
+
+Return ONLY this JSON: {"customer_id": ..., "reason": ..., "recipient": ..., "country": ..., "total_amount": ..., "num_transactions": ..., "supporting_document": ...}
+
+DOCUMENT:
+"""
+
+
+def _json_obj(raw: str) -> dict:
+    import re as _re
+    m = _re.search(r"\{.*\}", raw or "", _re.DOTALL)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _to_num(v):
+    if v in (None, "", "null"):
+        return None
+    try:
+        return int(float(str(v).replace(",", "").replace("RM", "").strip()))
+    except (ValueError, TypeError):
+        return None
+
+
+@app.post("/alerts/extract")
+async def extract_alert(file: UploadFile = File(...)):
+    """Read an uploaded document (PDF / DOCX / TXT) and extract the alert fields
+    with the LLM, so the analyst doesn't have to type them. Returns a draft alert
+    for the New Investigation form to pre-fill (the analyst reviews + edits)."""
+    from datetime import datetime
+    from app.tools.doc_extract import extract_text
+    from app.services.llm import chat
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    text = extract_text(file.filename or "", data)
+    if not text.strip():
+        raise HTTPException(status_code=400,
+                            detail="Could not read any text from the document.")
+
+    raw = chat(_EXTRACT_PROMPT + text[:6000]
+               + "\n\nRespond with ONLY the JSON object.", system=_EXTRACT_SYSTEM)
+    p = _json_obj(raw)
+    return {
+        "id": f"AML-UP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        "customer_id": (p.get("customer_id") or "") or "",
+        "reason": p.get("reason") or "",
+        "recipient": p.get("recipient") or "",
+        "country": p.get("country") or "Malaysia",
+        "total_amount": _to_num(p.get("total_amount")) or 0,
+        "num_transactions": _to_num(p.get("num_transactions")) or 1,
+        "supporting_document": p.get("supporting_document") or file.filename,
+        "_source_filename": file.filename,
+        "_extracted_chars": len(text),
+    }
+
+
 @app.get("/config")
 def config():
     """System configuration for the Settings page: models, versions, thresholds."""
