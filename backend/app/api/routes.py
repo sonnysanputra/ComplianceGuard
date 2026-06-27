@@ -535,8 +535,8 @@ async def extract_alert(file: UploadFile = File(...)):
     if not text.strip():
         raise HTTPException(
             status_code=422,
-            detail="No text layer found. This looks like a scanned / image-only PDF; "
-                   "OCR isn't enabled, so please upload a digital statement or enter the "
+            detail="Couldn't read this document, even with OCR. If it's a scanned "
+                   "statement, make sure it's a clear, upright scan — or enter the "
                    "details manually.")
 
     # Deterministic parse first -- for a tabular statement this reads every row and
