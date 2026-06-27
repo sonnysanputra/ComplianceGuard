@@ -412,17 +412,54 @@ notice, transaction report, email, or compliance memo). Use ONLY information exp
 present in the document. If a field is not stated, return null for it -- NEVER guess or \
 invent values, names, or amounts."""
 
-_EXTRACT_PROMPT = """Extract these fields from the document below.
+_EXTRACT_PROMPT = """Extract the AML alert, the customer profile, and the individual \
+transactions from the document below. Use ONLY what is in the document; use null / [] for \
+anything not present. Never invent values.
 
-- customer_id        : the customer or account identifier (e.g. CUST-10291), or null
-- reason             : a one-sentence description of why the activity is suspicious, in the document's own terms
-- recipient          : the counterparty / beneficiary name, or null
-- country            : the destination or counterparty country, or null
-- total_amount       : the total amount as a plain number (no currency symbol or commas), or null
-- num_transactions   : the number of transactions mentioned, or null
-- supporting_document: an invoice or reference number if present, or null
+Return ONLY this JSON:
+{
+  "customer_id": <string or null>,
+  "reason": <one sentence on why it is suspicious, or null>,
+  "recipient": <main counterparty name or null>,
+  "country": <main destination country or null>,
+  "total_amount": <number or null>,
+  "num_transactions": <number or null>,
+  "supporting_document": <invoice/reference number or null>,
+  "customer": {
+     "name": ..., "occupation": ..., "declared_income": <monthly income number or null>,
+     "account_age_months": <number or null>, "risk_category": "Low|Medium|High" or null,
+     "previous_alerts": <number or null>, "kyc_status": ..., "country": ...
+  },
+  "transactions": [
+     {"date_time": "YYYY-MM-DDTHH:MM:SS", "amount": <number>, "recipient": ...,
+      "country": ..., "direction": "in" or "out", "is_new_recipient": <true|false>}
+  ]
+}
 
-Return ONLY this JSON: {"customer_id": ..., "reason": ..., "recipient": ..., "country": ..., "total_amount": ..., "num_transactions": ..., "supporting_document": ...}
+READING A BANK STATEMENT (very important):
+- Each transaction line looks like: DATE  DESCRIPTION  [REF]  AMOUNT  RUNNING-BALANCE.
+- The LAST number on the line is the running account balance; the number BEFORE it is the
+  transaction amount. Put the transaction amount in "amount" (never the balance).
+- Determine "direction" from the balance: if the running balance INCREASED vs the previous
+  line the money came IN (credit) -> "in"; if it DECREASED the money went OUT (debit) -> "out".
+- SKIP opening/closing/brought-forward lines ("BEGINNING BALANCE", "ENDING BALANCE",
+  "BAKI BAWA KE HADAPAN") -- they are not transactions.
+- "recipient" is the party named in the description (e.g. "GLOBAL TRADE LTD", "MAMA RAHMAN").
+- "date_time": use the statement date; if no time is shown use T00:00:00.
+- Malaysian statements use the Baki/Balance and Debit/Kredit columns -- rely on the balance
+  delta rule above rather than guessing which column an amount sat in.
+
+If the document is just an alert (no statement), "transactions" may be []. If there is no \
+profile, "customer" may be null.
+
+DOCUMENT:
+"""
+
+_TXN_ONLY_PROMPT = """This is a continuation of a bank statement. Extract ONLY the \
+transactions from it, as JSON {"transactions": [...]}. Each line is \
+DATE DESCRIPTION [REF] AMOUNT RUNNING-BALANCE: "amount" is the second-to-last number, \
+direction is "in" if the running balance increased vs the previous line else "out". Skip \
+opening/closing balance lines.
 
 DOCUMENT:
 """
@@ -448,6 +485,39 @@ def _to_num(v):
         return None
 
 
+def _coerce_txns(items, default_country: str) -> list[dict]:
+    """Normalise LLM-extracted transaction rows; drop rows without a usable amount."""
+    rows = []
+    for t in items or []:
+        if not isinstance(t, dict):
+            continue
+        amt = _to_num(t.get("amount"))
+        if amt is None or amt == 0:
+            continue
+        rows.append({
+            "date_time": t.get("date_time") or t.get("date") or "",
+            "amount": amt,
+            "recipient": (t.get("recipient") or "").strip(),
+            "country": t.get("country") or default_country or "Malaysia",
+            "direction": "in" if str(t.get("direction", "")).lower().startswith("in") else "out",
+            "is_new_recipient": bool(t.get("is_new_recipient", True)),
+        })
+    return rows
+
+
+def _line_chunks(text: str, size: int) -> list[str]:
+    """Split text into <=size chunks on line boundaries (so a transaction line stays whole)."""
+    chunks, cur = [], ""
+    for line in text.splitlines(keepends=True):
+        if len(cur) + len(line) > size and cur:
+            chunks.append(cur)
+            cur = ""
+        cur += line
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
 @app.post("/alerts/extract")
 async def extract_alert(file: UploadFile = File(...)):
     """Read an uploaded document (PDF / DOCX / TXT) and extract the alert fields
@@ -455,6 +525,7 @@ async def extract_alert(file: UploadFile = File(...)):
     for the New Investigation form to pre-fill (the analyst reviews + edits)."""
     from datetime import datetime
     from app.tools.doc_extract import extract_text
+    from app.tools.statement_parse import parse_statement
     from app.services.llm import chat
 
     data = await file.read()
@@ -462,12 +533,50 @@ async def extract_alert(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty file.")
     text = extract_text(file.filename or "", data)
     if not text.strip():
-        raise HTTPException(status_code=400,
-                            detail="Could not read any text from the document.")
+        raise HTTPException(
+            status_code=422,
+            detail="No text layer found. This looks like a scanned / image-only PDF; "
+                   "OCR isn't enabled, so please upload a digital statement or enter the "
+                   "details manually.")
 
-    raw = chat(_EXTRACT_PROMPT + text[:6000]
+    # Deterministic parse first -- for a tabular statement this reads every row and
+    # derives direction from the running-balance delta (reliable, no model drift).
+    parsed = parse_statement(text)
+
+    # first chunk: LLM extraction for the alert summary + customer profile (prose the
+    # parser can't read), plus a transaction fallback for non-tabular documents.
+    chunks = _line_chunks(text, 9000)
+    raw = chat(_EXTRACT_PROMPT + chunks[0]
                + "\n\nRespond with ONLY the JSON object.", system=_EXTRACT_SYSTEM)
     p = _json_obj(raw)
+    default_country = p.get("country") or "Malaysia"
+
+    if len(parsed) >= 2:
+        txns = parsed                               # trust the deterministic statement parse
+    else:
+        txns = _coerce_txns(p.get("transactions"), default_country)
+        for chunk in chunks[1:6]:                   # long prose docs: chunk + merge
+            if len(txns) >= 300:
+                break
+            r2 = chat(_TXN_ONLY_PROMPT + chunk
+                      + "\n\nRespond with ONLY the JSON object.", system=_EXTRACT_SYSTEM)
+            txns += _coerce_txns(_json_obj(r2).get("transactions"), default_country)
+
+    # customer profile (only if the document actually carried one)
+    cust = p.get("customer") if isinstance(p.get("customer"), dict) else None
+    customer = None
+    if cust and any(cust.get(k) for k in ("name", "occupation", "declared_income")):
+        customer = {
+            "name": cust.get("name") or "",
+            "occupation": cust.get("occupation") or "",
+            "declared_income": _to_num(cust.get("declared_income")),
+            "account_age_months": _to_num(cust.get("account_age_months")),
+            "risk_category": cust.get("risk_category") or "Medium",
+            "previous_alerts": _to_num(cust.get("previous_alerts")) or 0,
+            "kyc_status": cust.get("kyc_status") or "Completed",
+            "country": cust.get("country") or p.get("country") or "Malaysia",
+        }
+
     return {
         "id": f"AML-UP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
         "customer_id": (p.get("customer_id") or "") or "",
@@ -475,11 +584,63 @@ async def extract_alert(file: UploadFile = File(...)):
         "recipient": p.get("recipient") or "",
         "country": p.get("country") or "Malaysia",
         "total_amount": _to_num(p.get("total_amount")) or 0,
-        "num_transactions": _to_num(p.get("num_transactions")) or 1,
+        "num_transactions": _to_num(p.get("num_transactions")) or (len(txns) or 1),
         "supporting_document": p.get("supporting_document") or file.filename,
+        "customer": customer,
+        "transactions": txns,
         "_source_filename": file.filename,
         "_extracted_chars": len(text),
     }
+
+
+# ---- ingest a customer profile + transactions so a NEW case has data to analyse ----
+class CustomerIn(BaseModel):
+    name: Optional[str] = ""
+    occupation: Optional[str] = ""
+    declared_income: Optional[int] = None
+    account_age_months: Optional[int] = None
+    risk_category: Optional[str] = "Medium"
+    previous_alerts: Optional[int] = 0
+    kyc_status: Optional[str] = "Completed"
+    country: Optional[str] = "Malaysia"
+
+
+class TransactionIn(BaseModel):
+    amount: int
+    date_time: str
+    recipient: Optional[str] = ""
+    country: Optional[str] = "Malaysia"
+    direction: str = "out"
+    is_new_recipient: bool = True
+    transaction_type: Optional[str] = "transfer"
+    transaction_purpose: Optional[str] = None
+    source_of_funds: Optional[str] = None
+    supporting_document_url: Optional[str] = None
+
+
+class IngestRequest(BaseModel):
+    customer_id: str
+    customer: Optional[CustomerIn] = None
+    transactions: Optional[list[TransactionIn]] = None
+
+
+@app.post("/ingest")
+def ingest(req: IngestRequest):
+    """Upsert a customer profile + their transactions into Supabase so the
+    investigation has real data to analyse (used for genuinely new cases)."""
+    from app.tools.db import upsert_customer, replace_transactions
+    cust_ok = False
+    if req.customer:
+        prof = req.customer.model_dump()
+        prof["customer_id"] = req.customer_id
+        cust_ok = upsert_customer(prof)
+    n = replace_transactions(req.customer_id,
+                             [t.model_dump() for t in (req.transactions or [])])
+    if req.customer and not cust_ok:
+        raise HTTPException(status_code=503,
+                            detail="Could not save to Supabase. Check SUPABASE_URL/KEY in backend/.env.")
+    return {"ok": True, "customer_id": req.customer_id,
+            "customer_upserted": cust_ok, "transactions_ingested": n}
 
 
 @app.get("/config")

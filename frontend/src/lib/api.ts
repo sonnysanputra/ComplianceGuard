@@ -150,6 +150,32 @@ export interface LearningSummary {
   patterns: LearnedPattern[];
 }
 
+export interface CustomerProfile {
+  name?: string;
+  occupation?: string;
+  declared_income?: number | null;
+  account_age_months?: number | null;
+  risk_category?: string;
+  previous_alerts?: number | null;
+  kyc_status?: string;
+  country?: string;
+}
+
+export interface TxnRow {
+  date_time: string;
+  amount: number;
+  recipient?: string;
+  country?: string;
+  direction: "in" | "out";
+  is_new_recipient: boolean;
+}
+
+export interface ExtractResult extends Scenario {
+  customer?: CustomerProfile | null;
+  transactions?: TxnRow[];
+  _source_filename?: string;
+}
+
 export interface AuditEvent {
   id?: number;
   case_id?: string;
@@ -193,6 +219,8 @@ export const api = {
   auditEvents: (limit = 120) => get<{ events: AuditEvent[]; governance: Record<string, string> }>(`/audit-events?limit=${limit}`),
   reloadRules: () => post<Record<string, unknown>>("/rules/reload", {}),
   reindexPolicies: () => post<Record<string, unknown>>("/policies/reindex", {}),
+  ingest: (body: { customer_id: string; customer?: CustomerProfile | null; transactions?: TxnRow[] }) =>
+    post<{ ok: boolean; transactions_ingested: number; customer_upserted: boolean }>("/ingest", body),
   decide: (id: string, body: Record<string, unknown>) =>
     post<CaseSnapshot>(`/case/${encodeURIComponent(id)}/decision`, body),
   sarExportUrl: (id: string, format: "pdf" | "docx" | "markdown") =>
@@ -207,8 +235,8 @@ export function toAlert(s: Scenario): Scenario {
   return alert;
 }
 
-// Upload a document; the backend LLM extracts the alert fields.
-export async function extractAlertFromFile(file: File): Promise<Scenario & { _source_filename?: string }> {
+// Upload a document; the backend LLM extracts the alert fields (+ profile + transactions).
+export async function extractAlertFromFile(file: File): Promise<ExtractResult> {
   const fd = new FormData();
   fd.append("file", file);
   const r = await fetch(`${API_BASE}/alerts/extract`, { method: "POST", body: fd });

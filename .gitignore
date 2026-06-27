@@ -8,3 +8,6 @@ __pycache__/
 
 # ChromaDB local store (regenerated from rag.py on first run)
 chroma_db/
+
+# generated test fixtures
+sample_statement_*.pdf
