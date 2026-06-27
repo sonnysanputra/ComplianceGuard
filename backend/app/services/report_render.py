@@ -26,6 +26,7 @@ def _logo() -> Path | None:
 # brand palette
 ORANGE = (249, 115, 22)
 DARK = (31, 41, 55)
+INK = (33, 37, 41)        # near-black body text (high contrast)
 GREY = (107, 114, 128)
 LIGHT = (229, 231, 235)
 SOFT = (248, 250, 252)
@@ -41,6 +42,19 @@ def _ascii(s) -> str:
             .replace("•", "-").replace("✓", "[OK]").replace("…", "...")
             .replace("’", "'").replace("“", '"').replace("”", '"')
             .encode("latin-1", "replace").decode("latin-1"))
+
+
+def _label_split(text: str):
+    """If a line is a short 'Label: value' pair, return (label, value); else None.
+    Used to render the label in bold for readability (e.g. **Name:** Sonny)."""
+    if ": " not in text:
+        return None
+    label, rest = text.split(": ", 1)
+    if (0 < len(label) <= 38 and rest.strip()
+            and "." not in label and "," not in label
+            and len(label.split()) <= 5):
+        return label, rest
+    return None
 
 
 # ======================================================================
@@ -110,9 +124,9 @@ def render_pdf(title: str, subtitle: str, meta: list[tuple[str, str]],
     for i, (k, v) in enumerate(meta):
         pdf.set_x(15)
         pdf.set_fill_color(*(SOFT if i % 2 == 0 else WHITE))
-        pdf.set_text_color(*GREY); pdf.set_font("Helvetica", "B", 8.5)
+        pdf.set_text_color(*DARK); pdf.set_font("Helvetica", "B", 9)
         pdf.cell(col_l, 7, "  " + _ascii(k), border=0, fill=True)
-        pdf.set_text_color(*DARK); pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*INK); pdf.set_font("Helvetica", "", 9)
         pdf.cell(col_r, 7, _ascii(v), border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
@@ -127,10 +141,16 @@ def render_pdf(title: str, subtitle: str, meta: list[tuple[str, str]],
         y = pdf.get_y() + 0.5
         pdf.line(15, y, 15 + 24, y)
         pdf.ln(2.5)
-        pdf.set_font("Helvetica", "", 9.5); pdf.set_text_color(60, 60, 60)
+        pdf.set_text_color(*INK)
         for ln in lines:
+            content = _ascii(ln) or " "
+            pair = _label_split(content)
+            if pair:
+                content = f"**{pair[0]}:** {pair[1]}"
             pdf.set_x(17)
-            pdf.multi_cell(pdf.epw - 2, 5.2, _ascii(ln) or " ", wrapmode="CHAR")
+            pdf.set_font("Helvetica", "", 9.5)
+            # WORD wrap keeps words whole; markdown bolds the label prefix
+            pdf.multi_cell(pdf.epw - 2, 5.2, content, wrapmode="WORD", markdown=True)
         pdf.ln(3)
 
     return bytes(pdf.output())
@@ -186,8 +206,13 @@ def render_docx(title: str, subtitle: str, meta: list[tuple[str, str]],
         h = doc.add_heading(level=1)
         hr = h.add_run(title_s); hr.font.color.rgb = O
         for ln in lines:
-            p = doc.add_paragraph(str(ln), style="List Bullet")
-            p.runs[0].font.size = Pt(9.5)
+            p = doc.add_paragraph(style="List Bullet")
+            pair = _label_split(str(ln))
+            if pair:
+                lr = p.add_run(f"{pair[0]}: "); lr.bold = True; lr.font.size = Pt(9.5); lr.font.color.rgb = D
+                vr = p.add_run(pair[1]); vr.font.size = Pt(9.5); vr.font.color.rgb = D
+            else:
+                r = p.add_run(str(ln)); r.font.size = Pt(9.5); r.font.color.rgb = D
 
     # disclaimer footer text
     doc.add_paragraph()
