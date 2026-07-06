@@ -1,20 +1,30 @@
 from openai import OpenAI
 
-from app.core.config import OLLAMA_BASE_URL, CHAT_MODEL, EMBED_MODEL
+from app.core.config import (
+    LLM_BASE_URL,
+    LLM_API_KEY,
+    EMBED_BASE_URL,
+    EMBED_API_KEY,
+    CHAT_MODEL,
+    EMBED_MODEL,
+)
 
-_client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+# One OpenAI-compatible client for chat, one for embeddings (they may point at
+# different providers). With the defaults both target local Ollama.
+_chat_client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+_embed_client = OpenAI(base_url=EMBED_BASE_URL, api_key=EMBED_API_KEY)
 
 
 # ======================================================================
 # LLM
 # ======================================================================
 def chat(prompt: str, system: str | None = None, temperature: float = 0.2) -> str:
-    """Single LLM call to Qwen. Low temperature for consistent compliance output."""
+    """Single chat completion. Low temperature for consistent compliance output."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    resp = _client.chat.completions.create(
+    resp = _chat_client.chat.completions.create(
         model=CHAT_MODEL,
         messages=messages,
         temperature=temperature,
@@ -23,6 +33,6 @@ def chat(prompt: str, system: str | None = None, temperature: float = 0.2) -> st
 
 
 def embed(texts: list[str]) -> list[list[float]]:
-    """Turn strings into vectors using the local embed model."""
-    resp = _client.embeddings.create(model=EMBED_MODEL, input=texts)
+    """Turn strings into vectors using the configured embedding model."""
+    resp = _embed_client.embeddings.create(model=EMBED_MODEL, input=texts)
     return [d.embedding for d in resp.data]

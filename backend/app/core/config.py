@@ -19,10 +19,21 @@ if _dotenv:
 # backend/ directory (this file is backend/app/core/config.py -> parents[2])
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
-# ---- LLM (Ollama / Qwen) ----
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+# ---- LLM (any OpenAI-compatible provider: Ollama, OpenAI, Groq, Together...) ----
+# The client speaks the OpenAI API, so switching providers is just base_url + key.
+# Defaults keep local Ollama working with no key; set these in .env to deploy
+# against a hosted provider. OLLAMA_BASE_URL is still read for back-compat.
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv(
+    "OLLAMA_BASE_URL", "http://localhost:11434/v1"
+)
+LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+
+# Embeddings may come from a different provider than chat (some chat APIs have
+# no embeddings endpoint). Default to the chat provider.
+EMBED_BASE_URL = os.getenv("EMBED_BASE_URL", LLM_BASE_URL)
+EMBED_API_KEY = os.getenv("EMBED_API_KEY", LLM_API_KEY)
 
 # ---- Vector store (kept under backend/ so it's predictable) ----
 CHROMA_PATH = str(BACKEND_DIR / "chroma_db")
