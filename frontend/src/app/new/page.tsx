@@ -7,7 +7,7 @@ import {
   type Scenario, type StreamProgress, type CustomerProfile, type TxnRow,
 } from "@/lib/api";
 import { Card, CardLabel, Spinner, pct } from "@/components/ui";
-import { Play, Check, X, Upload, FileText, Plus, Trash2, UserPlus, ChevronDown } from "lucide-react";
+import { Play, Check, X, Upload, FileText, Plus, Trash2, UserPlus, ChevronDown, CheckCircle2, Sparkles } from "lucide-react";
 
 interface Customer { customer_id: string; name?: string; occupation?: string; risk_category?: string }
 
@@ -15,6 +15,10 @@ function genId() {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
   return `AML-${ymd}-${Math.floor(100 + Math.random() * 899)}`;
+}
+
+function genCustId() {
+  return `CUST-${Math.floor(100000 + Math.random() * 899999)}`;
 }
 
 const EMPTY_PROFILE: CustomerProfile = {
@@ -29,9 +33,11 @@ export default function NewInvestigation() {
     id: genId(), customer_id: "", reason: "", recipient: "",
     country: "Malaysia", total_amount: 0, num_transactions: 1, supporting_document: "",
   });
+  const [customerName, setCustomerName] = useState("");
   const [profile, setProfile] = useState<CustomerProfile>(EMPTY_PROFILE);
   const [showProfile, setShowProfile] = useState(false);
   const [txns, setTxns] = useState<TxnRow[]>([]);
+  const newIdRef = useRef(genCustId());
 
   const [running, setRunning] = useState(false);
   const [ingesting, setIngesting] = useState(false);
@@ -58,6 +64,7 @@ export default function NewInvestigation() {
         num_transactions: a.num_transactions || f.num_transactions,
         supporting_document: a.supporting_document || file.name,
       }));
+      if (a.customer?.name || a.customer_id) setCustomerName(a.customer?.name || a.customer_id);
       if (a.customer) { setProfile({ ...EMPTY_PROFILE, ...a.customer }); setShowProfile(true); }
       if (a.transactions && a.transactions.length) setTxns(a.transactions);
       setExtracted(`${file.name}${a.transactions?.length ? ` — ${a.transactions.length} transactions` : ""}`);
@@ -71,9 +78,17 @@ export default function NewInvestigation() {
   useEffect(() => {
     fetch(`${API_BASE}/customers`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((cs: Customer[]) => { setCustomers(cs); if (cs[0]) setForm((f) => ({ ...f, customer_id: cs[0].customer_id })); })
+      .then((cs: Customer[]) => setCustomers(cs))
       .catch(() => {});
   }, []);
+
+  // Resolve the typed name against existing customers: match -> validated existing
+  // customer (use their ID); no match -> a new customer (auto-assign an ID).
+  const q = customerName.trim().toLowerCase();
+  const matched = q ? customers.find(
+    (c) => c.customer_id.toLowerCase() === q || (c.name || "").toLowerCase() === q) : undefined;
+  const isExisting = !!matched;
+  const resolvedId = matched ? matched.customer_id : newIdRef.current;
 
   function set<K extends keyof Scenario>(k: K, v: Scenario[K]) { setForm((f) => ({ ...f, [k]: v })); }
   function setP<K extends keyof CustomerProfile>(k: K, v: CustomerProfile[K]) { setProfile((p) => ({ ...p, [k]: v })); }
@@ -83,22 +98,25 @@ export default function NewInvestigation() {
   function setTxn(i: number, patch: Partial<TxnRow>) { setTxns((t) => t.map((r, j) => (j === i ? { ...r, ...patch } : r))); }
   function rmTxn(i: number) { setTxns((t) => t.filter((_, j) => j !== i)); }
 
-  const profileFilled = !!(profile.name || profile.occupation || profile.declared_income || profile.account_age_months);
+  const profileFilled = !!(profile.occupation || profile.declared_income || profile.account_age_months);
   const validTxns = txns.filter((t) => Number(t.amount) > 0);
 
   async function run() {
-    if (!form.customer_id || form.reason.trim().length <= 3 || startedRef.current) return;
+    if (!customerName.trim() || form.reason.trim().length <= 3 || startedRef.current) return;
     startedRef.current = true;
     setRunning(true); setError(null);
 
-    // If the analyst brought their own profile / transactions, persist them first
-    // so the agents have real data to analyse.
-    if (profileFilled || validTxns.length) {
+    const alert = { ...form, customer_id: resolvedId };
+
+    // New customer -> always create their profile (at least the name). Existing
+    // customer -> only ingest if the analyst added a profile/transactions.
+    const wantProfile = !isExisting || profileFilled;
+    if (wantProfile || validTxns.length) {
       setIngesting(true);
       try {
         await api.ingest({
-          customer_id: form.customer_id,
-          customer: profileFilled ? profile : null,
+          customer_id: resolvedId,
+          customer: wantProfile ? { ...profile, name: customerName.trim() } : null,
           transactions: validTxns,
         });
       } catch (e) {
@@ -109,20 +127,20 @@ export default function NewInvestigation() {
       setIngesting(false);
     }
 
-    streamInvestigation(form, {
+    streamInvestigation(alert, {
       onProgress: (p) => setEvents((e) => [...e, p]),
       onDone: (d) => setDone(d),
       onError: (e) => setError(e),
     });
   }
 
-  const canRun = form.customer_id && form.reason.trim().length > 3;
+  const canRun = customerName.trim().length > 1 && form.reason.trim().length > 3;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">New Investigation</h1>
-        <p className="text-sm text-ink2">Bring your own customer + transactions (or pick an existing customer), then run the 16-agent investigation live.</p>
+        <p className="text-sm text-ink2">Bring your own customer + transactions (or pick an existing customer), then run the 14-agent investigation live.</p>
       </div>
 
       {!running ? (
@@ -157,15 +175,28 @@ export default function NewInvestigation() {
             <Field label="Alert ID">
               <input value={form.id} onChange={(e) => set("id", e.target.value)} className={inp} />
             </Field>
-            <Field label="Customer ID">
-              <input list="cg-customers" value={form.customer_id} onChange={(e) => set("customer_id", e.target.value)} placeholder="e.g. CUST-10291 or a new ID" className={inp} />
+            <Field label="Customer name">
+              <input list="cg-customers" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                     placeholder="Search existing or type a new name" className={inp} autoComplete="off" />
               <datalist id="cg-customers">
                 {customers.map((c) => (
-                  <option key={c.customer_id} value={c.customer_id}>
-                    {c.name && c.name !== c.customer_id ? c.name : ""}{c.risk_category ? ` (${c.risk_category})` : ""}
+                  <option key={c.customer_id} value={c.name || c.customer_id}>
+                    {c.customer_id}{c.occupation ? ` · ${c.occupation}` : ""}{c.risk_category ? ` · ${c.risk_category} risk` : ""}
                   </option>
                 ))}
               </datalist>
+              {customerName.trim() && (
+                isExisting ? (
+                  <span className="mt-1 flex items-center gap-1.5 text-xs text-green">
+                    <CheckCircle2 size={13} /> On file — <b className="mono">{matched!.customer_id}</b>
+                    {matched!.occupation ? ` · ${matched!.occupation}` : ""}{matched!.risk_category ? ` · ${matched!.risk_category} risk` : ""}
+                  </span>
+                ) : (
+                  <span className="mt-1 flex items-center gap-1.5 text-xs text-ink3">
+                    <Sparkles size={13} className="text-primary" /> New customer — ID <b className="mono">{resolvedId}</b> will be created
+                  </span>
+                )
+              )}
             </Field>
             <Field label="Alert reason" full>
               <input value={form.reason} onChange={(e) => set("reason", e.target.value)} placeholder="e.g. Multiple sub-threshold transfers to a new overseas recipient" className={inp} />
@@ -195,7 +226,6 @@ export default function NewInvestigation() {
           </button>
           {showProfile && (
             <div className="mt-3 grid gap-4 rounded-lg border border-line p-4 sm:grid-cols-2">
-              <Field label="Full name"><input value={profile.name ?? ""} onChange={(e) => setP("name", e.target.value)} className={inp} placeholder="e.g. Aiman Rahman" /></Field>
               <Field label="Occupation"><input value={profile.occupation ?? ""} onChange={(e) => setP("occupation", e.target.value)} className={inp} placeholder="e.g. Junior Clerk" /></Field>
               <Field label="Declared income (RM/month)"><input type="number" value={profile.declared_income ?? ""} onChange={(e) => setP("declared_income", e.target.value ? Number(e.target.value) : undefined)} className={inp} /></Field>
               <Field label="Account age (months)"><input type="number" value={profile.account_age_months ?? ""} onChange={(e) => setP("account_age_months", e.target.value ? Number(e.target.value) : undefined)} className={inp} /></Field>

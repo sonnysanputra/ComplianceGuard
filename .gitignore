@@ -11,3 +11,4 @@ chroma_db/
 
 # generated test fixtures
 sample_statement_*.pdf
+sample_alert_*
