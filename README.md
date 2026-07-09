@@ -8,6 +8,8 @@ Runs on a **local LLM** (Qwen via Ollama) — **customer data never leaves your 
 
 > Every decision is traceable to its evidence, the rules that fired, the policies cited, and the human who approved it — a glass box, not a black box.
 
+📊 **[Pitch Deck / Presentation slides →](https://canva.link/wkpc0vxa01w1lkm)**
+
 ---
 
 ## The problem
@@ -28,7 +30,7 @@ Not Tier-1 banks with 200-analyst financial-crime units and a 18-month Quantexa 
 - Teams that need value in **week one**, not after a year of professional services.
 - Compliance and InfoSec leaders who can't send customer data to a third-party cloud model — **the local LLM means data never leaves their environment**.
 
-See [GO-TO-MARKET.md](GO-TO-MARKET.md) for the target customer, ROI math, adoption roadmap, and differentiation. See [DEMO.md](DEMO.md) for the 3-act demo (including the self-learning moment).
+See [GO-TO-MARKET.md](GO-TO-MARKET.md) for the target customer, ROI math, adoption roadmap, and differentiation. See [DEMO.md](DEMO.md) for the 3-act demo (including the self-learning moment). See the **[Pitch Deck](https://canva.link/wkpc0vxa01w1lkm)** for the full presentation.
 
 ---
 
